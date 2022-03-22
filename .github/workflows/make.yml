@@ -10,8 +10,11 @@ jobs:
   build:
 
     runs-on: ubuntu-latest
+    
+    steps: 
+    - name: Install GCC
+      run: sudo apt-get install g++
 
-     steps:
-      - uses: actions/checkout@v2
-      - name: make_executable | 
-        run: gcc -o run -std=c++17 main.cpp
+    - uses: actions/checkout@v2
+    - name: make
+      run: make
