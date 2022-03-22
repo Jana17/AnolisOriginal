@@ -13,5 +13,5 @@ jobs:
 
      steps:
       - uses: actions/checkout@v2
-      - name: make
+      - name: make_executable | 
         run: gcc -o run -std=c++17 main.cpp
