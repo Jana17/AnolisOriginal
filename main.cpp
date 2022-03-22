@@ -352,16 +352,20 @@ struct Output {
         file_name = get_file_name(P, o);
     }
     
+    Output() {
+        
+    }
+    
     std::string file_name;
     output_type o;
     
-    void update(const std::vector< Niche >& world) {
+    void update(const std::vector< Niche >& world, int t) {
         switch(o) {
             case only_average:
-                output_averages(world);
+                output_averages(world, t);
                 break;
             case only_females:
-                output_females(world);
+                // output_females(world, t);
                 break;
         }
     }
@@ -377,11 +381,15 @@ struct Output {
             case only_average:
                 return make_file_name(P.only_average_file_name, P);
                 break;
+            case default:
+                return "test.txt";
+                break;
         }
     }
     
-    void output_averages(const std::vector< Niche >& world) {
+    void output_averages(const std::vector< Niche >& world, int t) {
         std::ofstream out_file(file_name.c_str(), std::ios::app);
+        out_file << t << "\t";
         for (size_t i = 0; i < world.size(); ++i) {
             std::vector< std::vector< double > > individual_info;
             for (const auto& j : world[i].males) {
@@ -456,7 +464,6 @@ struct Output {
 };
 
 struct Simulation {
-    
     Simulation() {
       // later on, we can have a look at code to read parameters from file.
       //  parameters = read_parameters();
@@ -523,3 +530,10 @@ struct Simulation {
     
     std::vector< Niche > world;
 };
+
+
+int main() {
+    Simulation sim;
+    sim.run();
+    return 0;
+}
