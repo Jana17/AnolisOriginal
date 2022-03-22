@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
 
      steps:
-    - uses: actions/checkout@v2
-    - name: make
-      working-directory: console
-      run: gcc -o run -std=c++17 main.cpp
+      - uses: actions/checkout@v2
+      - name: make
+        working-directory: console
+        run: gcc -o run -std=c++17 main.cpp
