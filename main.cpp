@@ -381,7 +381,7 @@ struct Output {
             case only_average:
                 return make_file_name(P.only_average_file_name, P);
                 break;
-            case default:
+            default:
                 return "test.txt";
                 break;
         }
