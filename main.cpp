@@ -16,7 +16,7 @@
 using reng_type = rndutils::default_engine;
 enum sex {male, female};
 
-enum output_type {only_average, only_females};
+enum output_type {only_average, only_females, indiv_data_end, only_dispersers};
 
 struct Param {
     int number_of_timesteps = 20000;
@@ -24,6 +24,7 @@ struct Param {
     
     int num_niches = 6;
     int num_traits = 6;
+    int initial_niche = 5;//which niche do you start in?
     
     int pop_size_max = 1000;
     double lambda = 0.5;
@@ -44,9 +45,13 @@ struct Param {
     
     int init_males = 100;
     int init_females = 100;
+
+    int SexSel = 1; //Between how many males can the female choose? The higher this variable is, the stronger sexual selection
     
     output_type chosen_output_type = only_average;
     std::string only_average_file_name = "averages.txt";
+    std::string final_indiv_file_name = "final_indiv_data.txt";
+    std::string only_dispersers_file_name = "dispersers.txt";
     
 };
 
@@ -177,10 +182,14 @@ struct Individual {
     double fit_to_niche;
     double carotenoid_investment;
     double dewlap;
+    bool dispersed = false;//I added this in order to be able to output e.g. specifically only dispersers
+    int prev_niche;
+    int niche;
+    double prev_mismatch; //mismatch before dispersal, i.e. had they not dispersed
     
     Individual(const std::vector< int >& initial_trait_values,
-               double sigma,
-               sex initial_sex) : S(initial_sex) {
+               double sigma, Param P,
+               sex initial_sex) : S(initial_sex),niche(P.initial_niche) {
         for (int i = 0; i < initial_trait_values.size(); ++i) {
             traits.push_back(Trait(initial_trait_values[i],
                                    initial_trait_values[i],
@@ -189,7 +198,7 @@ struct Individual {
     }
     
     Individual(const Individual& parent1, const Individual& parent2,
-               double sigma, double recom_rate, rnd_j& rnd) : S(rnd.get_random_sex()) {
+               double sigma, double recom_rate, rnd_j& rnd) : S(rnd.get_random_sex()),niche(parent1.niche) {
 
         // recombination
         for (size_t i = 0; i < parent1.traits.size(); ++i) {
@@ -270,10 +279,10 @@ struct Niche {
     death_rate(P.basal_death_rate) {
        
         for (int i = 0; i < num_males; ++i) {
-            males.push_back(Individual(goals_from_data, P.sigma, male));
+            males.push_back(Individual(goals_from_data, P.sigma, P, male));
         }
         for (int i = 0; i < num_females; ++i) {
-            females.push_back(Individual(goals_from_data, P.sigma, male));
+            females.push_back(Individual(goals_from_data, P.sigma, P, female));
         }
     }
     
@@ -318,6 +327,9 @@ struct Niche {
                 
                 if (offspring.will_migrate(p, P.lambda, P.basal_migration_rate, rnd)) {
                     migrants.push_back(offspring);
+                    offspring.dispersed = true;
+                    offspring.prev_niche = mother.niche;
+                    offspring.prev_mismatch = offspring.mismatch;
                 } else {
                     kids.push_back(offspring);
                 }
@@ -367,12 +379,24 @@ struct Output {
             case only_females:
                 // output_females(world, t);
                 break;
+            case indiv_data_end:
+                output_indivData_end(world, t);
+            case only_dispersers:
+                output_dispersers(world, t);
+                break;            
         }
     }
-    
+
+
+
     std::string make_file_name(std::string base, const Param& P) {
-        base += "_" + std::to_string(P.recom_rate);
-        base += "_" + std::to_string(P.basal_birth_rate);
+        base += "_Sigma_" + std::to_string(sigma);
+        base += "_RecRate_" + std::to_string(recom_rate);
+        base += "_DewNoise_" + std::to_string(d_sigma);
+        base += "_SexSel_" + std::to_string(SexSel);
+        base += "_Seed_" + std::to_string(seed) 
+        base += ".csv";
+
         return base;
     }
     
@@ -381,6 +405,11 @@ struct Output {
             case only_average:
                 return make_file_name(P.only_average_file_name, P);
                 break;
+            case indiv_data_end:
+                return make_file_name(P.final_indiv_file_name, P);
+                break;
+            case only_dispersers:
+                return make_file_name(P.only_dispersers_file_name, P);
             default:
                 return "test.txt";
                 break;
@@ -389,6 +418,16 @@ struct Output {
     
     void output_averages(const std::vector< Niche >& world, int t) {
         std::ofstream out_file(file_name.c_str(), std::ios::app);
+        //below I tried to add columns names, not sure if I did it right...
+        //the main (?) problem is that I of course only want to add column names at the beginning and not every timestep...
+        if (t == 0) {//is there a more elegant way of doing this? Something that specifically checks whether the file is still empty? In case I decide to e.g. only save from t=1000 onwards, I'd still want column names then...
+            out_file << "Time" << "\t";
+            for (size_t TraitNr = 0; TraitNr < Param.num_traits; TraitNr++) {
+                out_file << "Trait_" << TraitNr << "\t" << "T" << TraitNr << "_Avg" << "\t" << "T" << TraitNr << "_Stdev" << "\t";
+            }
+            out_file << "\n";
+        }
+
         out_file << t << "\t";
         for (size_t i = 0; i < world.size(); ++i) {
             std::vector< std::vector< double > > individual_info;
@@ -410,6 +449,96 @@ struct Output {
         out_file.close();
     }
     
+
+    void output_indivData_end(const std::vector< Niche >& world, int t) {
+        std::ofstream out_file(file_name.c_str(), std::ios::app);
+        //I tried to add column names here but not sure if it worked
+        out_file << "Time" << "\t" << "Sex" << "\t" << "Resources" << "\t" << "Mismatch" << "\t" << "C_investment" << "\t" << "Dewlap" << "\t";
+        for (size_t TraitNr = 0; TraitNr < Param.num_traits; TraitNr++) {//Do I need to pass Param to the function if I use it here?
+            out_file_ << TraitNr << "_A" << "\t" << ;
+            out_file_ << TraitNr << "_B" << "\t" << ;
+            out_file_ << TraitNr << "_C" << "\t" << ;
+            out_file_ << TraitNr << "_Phen" << "\t" << ;
+        }
+        out_file << "\n";
+
+        if (t == number_of_timesteps - 1) {
+            
+            for (size_t i = 0; i < world.size(); ++i) {
+                for (const auto& j : world[i].males) {
+                    out_file << t << "\t" << world[i].males[j].S << "\t" << world[i].males[j].resource_level << "\t" << world[i].males[j].mismatch << "\t"
+                        << world[i].males[j].carotenoid_investment << "\t" << word[i].males[j].dewlap << "\t";
+                    for (size_t TraitNr = 0; TraitNr < Param.num_traits; TraitNr++) {
+                        out_file_ << world[i].males[j].traits[TraitNr].a << "\t" << ;
+                        out_file_ << world[i].males[j].traits[TraitNr].b << "\t" << ;
+                        out_file_ << world[i].males[j].traits[TraitNr].c << "\t" << ;
+                        out_file_ << world[i].males[j].traits[TraitNr].phenotype << "\t" << ;
+                    }
+                    out_file << "\n";
+                }
+                for (const auto& j : world[i].females) {
+                    out_file << t << "\t" << world[i].females[j].S << "\t" << world[i].females[j].resource_level << "\t" << world[i].females[j].mismatch << "\t"
+                        << world[i].females[j].carotenoid_investment << "\t" << "NA" << "\t";
+                    for (size_t TraitNr = 0; TraitNr < Param.num_traits; TraitNr++) {
+                        out_file_ << world[i].females[j].traits[TraitNr].a << "\t" << ;
+                        out_file_ << world[i].females[j].traits[TraitNr].b << "\t" << ;
+                        out_file_ << world[i].females[j].traits[TraitNr].c << "\t" << ;
+                        out_file_ << world[i].females[j].traits[TraitNr].phenotype << "\t" << ;
+                    }
+                    out_file << "\n";
+                }
+
+            }
+        }
+        out_file.close();
+    }
+
+    void output_dispersers(const std::vector< Niche >& world, int t) {
+        std::ofstream out_file(file_name.c_str(), std::ios::app);
+        //I tried to add column names here but not sure if it worked
+        if (t == 0) {
+            out_file << "Time" << "\t" << "Sex" << "\t" << "Resources" << "\t" << "C_investment" << "\t" << "Dewlap" << "\t";
+            for (size_t TraitNr = 0; TraitNr < Param.num_traits; TraitNr++) {//Do I need to pass Param to the function if I use it here?
+                out_file_ << TraitNr << "_A" << "\t" << ;
+                out_file_ << TraitNr << "_B" << "\t" << ;
+                out_file_ << TraitNr << "_C" << "\t" << ;
+                out_file_ << TraitNr << "_Phen" << "\t" << ;
+            }
+            out_file << "NicheBefore" << "\t" << "NicheAfter" << "\t" << "MismatchBefore" << "\t" << "MismatchAfter" << "\t";
+            out_file << "\n";
+        }
+
+        for (size_t i = 0; i < world.size(); ++i) {
+            for (const auto& j : world[i].males) {
+                out_file << t << "\t" << world[i].males[j].S << "\t" << world[i].males[j].resource_level << "\t"
+                    << world[i].males[j].carotenoid_investment << "\t" << word[i].males[j].dewlap << "\t";
+                for (size_t TraitNr = 0; TraitNr < Param.num_traits; TraitNr++) {
+                    out_file_ << world[i].males[j].traits[TraitNr].a << "\t" << ;
+                    out_file_ << world[i].males[j].traits[TraitNr].b << "\t" << ;
+                    out_file_ << world[i].males[j].traits[TraitNr].c << "\t" << ;
+                    out_file_ << world[i].males[j].traits[TraitNr].phenotype << "\t" << ;
+                }
+                out_file << world[i].males[j].prev_niche << "\t" << world[i].males[j].niche << "\t" << world[i].males[j].prev_mismatch << "\t" << world[i].males[j].mismatch << "\t";
+                out_file << "\n";
+            }
+            for (const auto& j : world[i].females) {
+                out_file << t << "\t" << world[i].females[j].S << "\t" << world[i].females[j].resource_level << "\t"
+                    << world[i].females[j].carotenoid_investment << "\t" << word[i].females[j].dewlap << "\t";
+                for (size_t TraitNr = 0; TraitNr < Param.num_traits; TraitNr++) {
+                    out_file_ << world[i].females[j].traits[TraitNr].a << "\t" << ;
+                    out_file_ << world[i].females[j].traits[TraitNr].b << "\t" << ;
+                    out_file_ << world[i].females[j].traits[TraitNr].c << "\t" << ;
+                    out_file_ << world[i].females[j].traits[TraitNr].phenotype << "\t" << ;
+                }
+                out_file << world[i].females[j].prev_niche << "\t" << world[i].females[j].niche << "\t" << world[i].females[j].prev_mismatch << "\t" << world[i].females[j].mismatch << "\t";
+                out_file << "\n";
+            }
+        }
+        out_file.close();        
+    }
+    
+
+
     std::vector<double> get_mean_values(const std::vector< std::vector< double >>& v) {
         std::vector<double> m(v.size());
         for (size_t i = 0; i < v.size(); ++i) {
