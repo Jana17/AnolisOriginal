@@ -20,7 +20,10 @@ enum output_type {only_average, only_females};
 
 struct Param {
     int number_of_timesteps = 20000;
-    int size_per_niche = 1000;
+    
+    //I think this parameter is not used anywhere, so I removed it.
+    //I think it is essentially the same as "pop_size_max", we only need one of those
+    //int size_per_niche = 1000;
     
     int num_niches = 6;
     int num_traits = 6;
@@ -185,6 +188,9 @@ struct Individual {
             traits.push_back(Trait(initial_trait_values[i],
                                    initial_trait_values[i],
                                    initial_trait_values[i]));
+            //don't we still need to add "set phenotype" here?
+            //maybe something like:
+            traits[i].set_phenotype(initial_sex, sigma);
         }
     }
     
@@ -273,6 +279,7 @@ struct Niche {
             males.push_back(Individual(goals_from_data, P.sigma, male));
         }
         for (int i = 0; i < num_females; ++i) {
+            //shouldn't it read "female" below, not male?
             females.push_back(Individual(goals_from_data, P.sigma, male));
         }
     }
@@ -306,6 +313,8 @@ struct Niche {
         
         if (males.empty()) return; // no reproduction
         
+        //unless I'm mistaken, shouldn't it be minus number of males and minus number of females, rather than plus number of females?
+        //also, what is the point in multiplying it by 1.0?
         double p = 1.0 * (P.pop_size_max - males.size() + females.size()) / P.pop_size_max;
         if (p < 0.0) p = 0.0;
         for (auto& mother : females) {
