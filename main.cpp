@@ -103,8 +103,9 @@ public:
     }
     
     // picks a random number in [0, n-1], useful when picking randomly from a vector.
-    size_t random_number(int n)    {
-        return std::uniform_int_distribution<> (0, n - 1)(rndgen);
+    size_t random_number(size_t n)    {
+        if (n == 1) return 0;
+        return std::uniform_int_distribution<> (0, static_cast<int>(n) - 1)(rndgen);
     }
 
     double dewlap_noise() {
@@ -112,7 +113,7 @@ public:
     }
 
     size_t draw_random_niche(size_t current_niche, size_t num_niches) {
-        std::uniform_int_distribution<> niche_number(0, num_niches - 1);
+        std::uniform_int_distribution<> niche_number(0, static_cast<int>(num_niches) - 1);
         size_t new_niche = niche_number(rndgen);
         while(new_niche == current_niche) {
             new_niche = niche_number(rndgen);
@@ -316,7 +317,7 @@ struct Niche {
             double prob_repro = p * (0.8 * P.basal_birth_rate + 0.2 * mother.resource_level);
             if (rnd.bernouilli(prob_repro)) {
                 // I first code here random mating. Non-random mating we need to look at a bit more closely!
-                auto father = males[ rnd.random_number(males.size()) ];
+                auto father = males[ rnd.random_number( males.size()) ];
                 
                 auto offspring = Individual(mother, father, P.sigma, P.recom_rate, rnd);
                 
@@ -347,7 +348,7 @@ struct Niche {
     }
     
     const std::vector< int > selection_goals;
-    const int num_traits;
+    const size_t num_traits;
     const double death_rate; // in case niches differ in basal death rate
 };
 
@@ -366,7 +367,7 @@ struct Output {
     std::string file_name;
     output_type o;
     
-    void update(const std::vector< Niche >& world, int t, const Param& P) {
+    void update(const std::vector< Niche >& world, size_t t, const Param& P) {
         switch(o) {
             case only_average:
                 output_averages(world, t, P);
@@ -411,7 +412,7 @@ struct Output {
         }
     }
     
-    void output_averages(const std::vector< Niche >& world, int t,
+    void output_averages(const std::vector< Niche >& world, size_t t,
                          const Param& P) {
         std::ofstream out_file(file_name.c_str(), std::ios::app);
         //below I tried to add columns names, not sure if I did it right...
@@ -446,7 +447,7 @@ struct Output {
     }
     
 
-    void output_indivData_end(const std::vector< Niche >& world, int t,
+    void output_indivData_end(const std::vector< Niche >& world, size_t t,
                               const Param& P) {
         std::ofstream out_file(file_name.c_str(), std::ios::app);
         //I tried to add column names here but not sure if it worked
@@ -492,7 +493,7 @@ struct Output {
         out_file.close();
     }
 
-    void output_dispersers(const std::vector< Niche >& world, int t, const Param& P) {
+    void output_dispersers(const std::vector< Niche >& world, size_t t, const Param& P) {
         std::ofstream out_file(file_name.c_str(), std::ios::app);
         //I tried to add column names here but not sure if it worked
         if (t == 0) {
@@ -647,7 +648,7 @@ struct Simulation {
         for (int i = 0; i < parameters.num_niches; ++i) {
             std::vector< int > niche_goals(parameters.num_traits);
             for (int j = 0; j < parameters.num_traits; ++j) {
-                niche_goals[j] = master_random_generator.random_number(100);
+                niche_goals[j] = static_cast<int>(master_random_generator.random_number(100)); //why 100 shouldn't this be a parameter??
             }
             new_goals.push_back(niche_goals);
         }
