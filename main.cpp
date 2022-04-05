@@ -103,8 +103,9 @@ public:
     }
     
     // picks a random number in [0, n-1], useful when picking randomly from a vector.
-    size_t random_number(int n)    {
-        return std::uniform_int_distribution<> (0, n - 1)(rndgen);
+    size_t random_number(size_t n)    {
+        if (n == 1) return 0;
+        return std::uniform_int_distribution<> (0, static_cast<int>(n) - 1)(rndgen);
     }
 
     double dewlap_noise() {
@@ -112,7 +113,7 @@ public:
     }
 
     size_t draw_random_niche(size_t current_niche, size_t num_niches) {
-        std::uniform_int_distribution<> niche_number(0, num_niches - 1);
+        std::uniform_int_distribution<> niche_number(0, static_cast<int>(num_niches) - 1);
         size_t new_niche = niche_number(rndgen);
         while(new_niche == current_niche) {
             new_niche = niche_number(rndgen);
@@ -141,10 +142,6 @@ private:
     std::normal_distribution<double> dewlap_dist;
     double mutate_prob;
 };
-
-
-
-
 
 
 struct Trait {
@@ -270,7 +267,6 @@ struct Individual {
 
 struct Niche {
     
-    
     Niche(const std::vector< int >& goals_from_data,
           int num_males,
           int num_females,
@@ -321,7 +317,7 @@ struct Niche {
             double prob_repro = p * (0.8 * P.basal_birth_rate + 0.2 * mother.resource_level);
             if (rnd.bernouilli(prob_repro)) {
                 // I first code here random mating. Non-random mating we need to look at a bit more closely!
-                auto father = males[ rnd.random_number(males.size()) ];
+                auto father = males[ rnd.random_number( males.size()) ];
                 
                 auto offspring = Individual(mother, father, P.sigma, P.recom_rate, rnd);
                 
@@ -352,7 +348,7 @@ struct Niche {
     }
     
     const std::vector< int > selection_goals;
-    const int num_traits;
+    const size_t num_traits;
     const double death_rate; // in case niches differ in basal death rate
 };
 
@@ -371,18 +367,18 @@ struct Output {
     std::string file_name;
     output_type o;
     
-    void update(const std::vector< Niche >& world, int t) {
+    void update(const std::vector< Niche >& world, size_t t, const Param& P) {
         switch(o) {
             case only_average:
-                output_averages(world, t);
+                output_averages(world, t, P);
                 break;
             case only_females:
                 // output_females(world, t);
                 break;
             case indiv_data_end:
-                output_indivData_end(world, t);
+                output_indivData_end(world, t, P);
             case only_dispersers:
-                output_dispersers(world, t);
+                output_dispersers(world, t, P);
                 break;            
         }
     }
@@ -390,11 +386,11 @@ struct Output {
 
 
     std::string make_file_name(std::string base, const Param& P) {
-        base += "_Sigma_" + std::to_string(sigma);
-        base += "_RecRate_" + std::to_string(recom_rate);
-        base += "_DewNoise_" + std::to_string(d_sigma);
-        base += "_SexSel_" + std::to_string(SexSel);
-        base += "_Seed_" + std::to_string(seed) 
+        base += "_Sigma_" + std::to_string(P.sigma);
+        base += "_RecRate_" + std::to_string(P.recom_rate);
+        base += "_DewNoise_" + std::to_string(P.d_sigma);
+        base += "_SexSel_" + std::to_string(P.SexSel);
+        base += "_Seed_" + std::to_string(P.seed);
         base += ".csv";
 
         return base;
@@ -416,13 +412,14 @@ struct Output {
         }
     }
     
-    void output_averages(const std::vector< Niche >& world, int t) {
+    void output_averages(const std::vector< Niche >& world, size_t t,
+                         const Param& P) {
         std::ofstream out_file(file_name.c_str(), std::ios::app);
         //below I tried to add columns names, not sure if I did it right...
         //the main (?) problem is that I of course only want to add column names at the beginning and not every timestep...
         if (t == 0) {//is there a more elegant way of doing this? Something that specifically checks whether the file is still empty? In case I decide to e.g. only save from t=1000 onwards, I'd still want column names then...
             out_file << "Time" << "\t";
-            for (size_t TraitNr = 0; TraitNr < Param.num_traits; TraitNr++) {
+            for (size_t TraitNr = 0; TraitNr < P.num_traits; TraitNr++) {
                 out_file << "Trait_" << TraitNr << "\t" << "T" << TraitNr << "_Avg" << "\t" << "T" << TraitNr << "_Stdev" << "\t";
             }
             out_file << "\n";
@@ -450,40 +447,44 @@ struct Output {
     }
     
 
-    void output_indivData_end(const std::vector< Niche >& world, int t) {
+    void output_indivData_end(const std::vector< Niche >& world, size_t t,
+                              const Param& P) {
         std::ofstream out_file(file_name.c_str(), std::ios::app);
         //I tried to add column names here but not sure if it worked
         out_file << "Time" << "\t" << "Sex" << "\t" << "Resources" << "\t" << "Mismatch" << "\t" << "C_investment" << "\t" << "Dewlap" << "\t";
-        for (size_t TraitNr = 0; TraitNr < Param.num_traits; TraitNr++) {//Do I need to pass Param to the function if I use it here?
-            out_file_ << TraitNr << "_A" << "\t" << ;
-            out_file_ << TraitNr << "_B" << "\t" << ;
-            out_file_ << TraitNr << "_C" << "\t" << ;
-            out_file_ << TraitNr << "_Phen" << "\t" << ;
+        for (size_t TraitNr = 0; TraitNr < P.num_traits; TraitNr++) {//Do I need to pass Param to the function if I use it here?
+            out_file << TraitNr << "_A" << "\t";
+            out_file << TraitNr << "_B" << "\t";
+            out_file << TraitNr << "_C" << "\t";
+            out_file << TraitNr << "_Phen" << "\t";
         }
         out_file << "\n";
 
-        if (t == number_of_timesteps - 1) {
-            
+        if (t == P.number_of_timesteps - 1) {
+        
             for (size_t i = 0; i < world.size(); ++i) {
-                for (const auto& j : world[i].males) {
+               // for (const auto& j : world[i].males) {
+                for (size_t j = 0; j < world[i].males.size(); ++j) {
+                    
                     out_file << t << "\t" << world[i].males[j].S << "\t" << world[i].males[j].resource_level << "\t" << world[i].males[j].mismatch << "\t"
-                        << world[i].males[j].carotenoid_investment << "\t" << word[i].males[j].dewlap << "\t";
-                    for (size_t TraitNr = 0; TraitNr < Param.num_traits; TraitNr++) {
-                        out_file_ << world[i].males[j].traits[TraitNr].a << "\t" << ;
-                        out_file_ << world[i].males[j].traits[TraitNr].b << "\t" << ;
-                        out_file_ << world[i].males[j].traits[TraitNr].c << "\t" << ;
-                        out_file_ << world[i].males[j].traits[TraitNr].phenotype << "\t" << ;
+                        << world[i].males[j].carotenoid_investment << "\t" << world[i].males[j].dewlap << "\t";
+                    for (size_t TraitNr = 0; TraitNr < P.num_traits; TraitNr++) {
+                        out_file << world[i].males[j].traits[TraitNr].a << "\t";
+                        out_file << world[i].males[j].traits[TraitNr].b << "\t";
+                        out_file << world[i].males[j].traits[TraitNr].c << "\t";
+                        out_file << world[i].males[j].traits[TraitNr].phenotype << "\t";
                     }
                     out_file << "\n";
                 }
-                for (const auto& j : world[i].females) {
+                for (size_t j = 0; j < world[i].females.size(); ++j) {
+               // for (const auto& j : world[i].females) {
                     out_file << t << "\t" << world[i].females[j].S << "\t" << world[i].females[j].resource_level << "\t" << world[i].females[j].mismatch << "\t"
                         << world[i].females[j].carotenoid_investment << "\t" << "NA" << "\t";
-                    for (size_t TraitNr = 0; TraitNr < Param.num_traits; TraitNr++) {
-                        out_file_ << world[i].females[j].traits[TraitNr].a << "\t" << ;
-                        out_file_ << world[i].females[j].traits[TraitNr].b << "\t" << ;
-                        out_file_ << world[i].females[j].traits[TraitNr].c << "\t" << ;
-                        out_file_ << world[i].females[j].traits[TraitNr].phenotype << "\t" << ;
+                    for (size_t TraitNr = 0; TraitNr < P.num_traits; TraitNr++) {
+                        out_file << world[i].females[j].traits[TraitNr].a << "\t";
+                        out_file << world[i].females[j].traits[TraitNr].b << "\t";
+                        out_file << world[i].females[j].traits[TraitNr].c << "\t";
+                        out_file << world[i].females[j].traits[TraitNr].phenotype << "\t";
                     }
                     out_file << "\n";
                 }
@@ -493,42 +494,44 @@ struct Output {
         out_file.close();
     }
 
-    void output_dispersers(const std::vector< Niche >& world, int t) {
+    void output_dispersers(const std::vector< Niche >& world, size_t t, const Param& P) {
         std::ofstream out_file(file_name.c_str(), std::ios::app);
         //I tried to add column names here but not sure if it worked
         if (t == 0) {
             out_file << "Time" << "\t" << "Sex" << "\t" << "Resources" << "\t" << "C_investment" << "\t" << "Dewlap" << "\t";
-            for (size_t TraitNr = 0; TraitNr < Param.num_traits; TraitNr++) {//Do I need to pass Param to the function if I use it here?
-                out_file_ << TraitNr << "_A" << "\t" << ;
-                out_file_ << TraitNr << "_B" << "\t" << ;
-                out_file_ << TraitNr << "_C" << "\t" << ;
-                out_file_ << TraitNr << "_Phen" << "\t" << ;
+            for (size_t TraitNr = 0; TraitNr < P.num_traits; TraitNr++) {//Do I need to pass Param to the function if I use it here?
+                out_file << TraitNr << "_A" << "\t" ;
+                out_file << TraitNr << "_B" << "\t";
+                out_file << TraitNr << "_C" << "\t";
+                out_file << TraitNr << "_Phen" << "\t";
             }
             out_file << "NicheBefore" << "\t" << "NicheAfter" << "\t" << "MismatchBefore" << "\t" << "MismatchAfter" << "\t";
             out_file << "\n";
         }
 
         for (size_t i = 0; i < world.size(); ++i) {
-            for (const auto& j : world[i].males) {
+            // for (const auto& j : world[i].males) {
+            for (size_t j = 0; j < world[i].males.size(); ++j) {
                 out_file << t << "\t" << world[i].males[j].S << "\t" << world[i].males[j].resource_level << "\t"
-                    << world[i].males[j].carotenoid_investment << "\t" << word[i].males[j].dewlap << "\t";
-                for (size_t TraitNr = 0; TraitNr < Param.num_traits; TraitNr++) {
-                    out_file_ << world[i].males[j].traits[TraitNr].a << "\t" << ;
-                    out_file_ << world[i].males[j].traits[TraitNr].b << "\t" << ;
-                    out_file_ << world[i].males[j].traits[TraitNr].c << "\t" << ;
-                    out_file_ << world[i].males[j].traits[TraitNr].phenotype << "\t" << ;
+                    << world[i].males[j].carotenoid_investment << "\t" << world[i].males[j].dewlap << "\t";
+                for (size_t TraitNr = 0; TraitNr < P.num_traits; TraitNr++) {
+                    out_file << world[i].males[j].traits[TraitNr].a << "\t";
+                    out_file << world[i].males[j].traits[TraitNr].b << "\t";
+                    out_file << world[i].males[j].traits[TraitNr].c << "\t";
+                    out_file << world[i].males[j].traits[TraitNr].phenotype << "\t";
                 }
                 out_file << world[i].males[j].prev_niche << "\t" << world[i].males[j].niche << "\t" << world[i].males[j].prev_mismatch << "\t" << world[i].males[j].mismatch << "\t";
                 out_file << "\n";
             }
-            for (const auto& j : world[i].females) {
+            // for (const auto& j : world[i].females) {
+            for (size_t j = 0; j < world[i].females.size(); ++j) {
                 out_file << t << "\t" << world[i].females[j].S << "\t" << world[i].females[j].resource_level << "\t"
-                    << world[i].females[j].carotenoid_investment << "\t" << word[i].females[j].dewlap << "\t";
-                for (size_t TraitNr = 0; TraitNr < Param.num_traits; TraitNr++) {
-                    out_file_ << world[i].females[j].traits[TraitNr].a << "\t" << ;
-                    out_file_ << world[i].females[j].traits[TraitNr].b << "\t" << ;
-                    out_file_ << world[i].females[j].traits[TraitNr].c << "\t" << ;
-                    out_file_ << world[i].females[j].traits[TraitNr].phenotype << "\t" << ;
+                    << world[i].females[j].carotenoid_investment << "\t" << world[i].females[j].dewlap << "\t";
+                for (size_t TraitNr = 0; TraitNr < P.num_traits; TraitNr++) {
+                    out_file << world[i].females[j].traits[TraitNr].a << "\t";
+                    out_file << world[i].females[j].traits[TraitNr].b << "\t";
+                    out_file << world[i].females[j].traits[TraitNr].c << "\t" ;
+                    out_file << world[i].females[j].traits[TraitNr].phenotype << "\t";
                 }
                 out_file << world[i].females[j].prev_niche << "\t" << world[i].females[j].niche << "\t" << world[i].females[j].prev_mismatch << "\t" << world[i].females[j].mismatch << "\t";
                 out_file << "\n";
@@ -627,7 +630,7 @@ struct Simulation {
                 world[i].reproduction(master_random_generator, parameters);
             }
             distribute_migrants();
-            record.update(world, t);
+            record.update(world, t, parameters);
         }
     }
 
@@ -646,7 +649,7 @@ struct Simulation {
         for (int i = 0; i < parameters.num_niches; ++i) {
             std::vector< int > niche_goals(parameters.num_traits);
             for (int j = 0; j < parameters.num_traits; ++j) {
-                niche_goals[j] = master_random_generator.random_number(100);
+                niche_goals[j] = static_cast<int>(master_random_generator.random_number(100)); //why 100 shouldn't this be a parameter??
             }
             new_goals.push_back(niche_goals);
         }
