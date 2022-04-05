@@ -461,11 +461,10 @@ struct Output {
         out_file << "\n";
 
         if (t == P.number_of_timesteps - 1) {
-        
+           
             for (size_t i = 0; i < world.size(); ++i) {
-               // for (const auto& j : world[i].males) {
+                //for (const auto& j : world[i].males) {
                 for (size_t j = 0; j < world[i].males.size(); ++j) {
-                    
                     out_file << t << "\t" << world[i].males[j].S << "\t" << world[i].males[j].resource_level << "\t" << world[i].males[j].mismatch << "\t"
                         << world[i].males[j].carotenoid_investment << "\t" << world[i].males[j].dewlap << "\t";
                     for (size_t TraitNr = 0; TraitNr < P.num_traits; TraitNr++) {
