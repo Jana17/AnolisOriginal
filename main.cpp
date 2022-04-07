@@ -20,8 +20,8 @@ enum output_type {only_average, only_females, indiv_data_end, only_dispersers};
 
 struct Param {
     int number_of_timesteps = 20000;
-    int size_per_niche = 1000;
-    
+    int save_interval = 10; //e.g. save output only every 10 timesteps
+        
     int num_niches = 6;
     int num_traits = 6;
     int initial_niche = 5;//which niche do you start in?
@@ -45,6 +45,7 @@ struct Param {
     
     int init_males = 100;
     int init_females = 100;
+    double init_investment = 0.0;
 
     int SexSel = 1; //Between how many males can the female choose? The higher this variable is, the stronger sexual selection
     
@@ -52,7 +53,45 @@ struct Param {
     std::string only_average_file_name = "averages.txt";
     std::string final_indiv_file_name = "final_indiv_data.txt";
     std::string only_dispersers_file_name = "dispersers.txt";
-    
+
+    std::vector<double>MaxMism{ 410,330,420,460,460,500 };//this is of course a very inelegant way of implementing the mismatch, but we are not keeping the mismatch anyways, just to check if we replicate the results
+
+    void set_parameters() {
+
+        std::ifstream ifs(parFileName.c_str());
+        if (!ifs.is_open()) { std::cerr << "Unable to open parfile " << parFileName << '\n'; exit(EXIT_FAILURE); }
+        for (;;) {
+            std::string parId;
+            ifs >> parId;
+            if (ifs.good()) {
+                if (parId == "maxtime") { ifs >> number_of_timesteps; }
+                else if (parId == "saveinterval") { ifs >> save_interval; }
+                else if (parId == "num_niches") { ifs >> num_niches; }
+                else if (parId == "num_traits") { ifs >> num_traits; }
+                else if (parId == "start_niche_ID") { ifs >> initial_niche; }
+                else if (parId == "popsize_per_niche") { ifs >> pop_size_max; }
+                else if (parId == "lambda") { ifs >> lambda; }
+                else if (parId == "basal_d") { ifs >> basal_death_rate; }
+                else if (parId == "basal_b") { ifs >> basal_birth_rate; }
+                else if (parId == "basal_mig") { ifs >> basal_migration_rate; }
+                else if (parId == "sigma") { ifs >> sigma; }
+                else if (parId == "d_sigma") { ifs >> d_sigma; }
+                else if (parId == "mutrate") { ifs >> mu; }
+                else if (parId == "recombirate") { ifs >> recom_rate; }
+                else if (parId == "use_random_niches") { ifs >> use_random_niches; }
+                else if (parId == "init_males") { ifs >> init_males; }
+                else if (parId == "init_females") { ifs >> init_females; }
+                else if (parId == "init_investment") { ifs >> init_investment; }
+                else if (parId == "SexSel") { ifs >> SexSel; }
+
+
+                else { std::cerr << "unknown parname in file"; exit(EXIT_FAILURE); }
+
+            }
+            else break;
+        }
+        ifs.close();
+    }
 };
 
 class rnd_j {
@@ -184,31 +223,48 @@ struct Individual {
     int niche;
     double prev_mismatch; //mismatch before dispersal, i.e. had they not dispersed
     
-    Individual(const std::vector< int >& initial_trait_values,
+    Individual(const std::vector< int >& trait_goals,
                double sigma, Param P,
-               sex initial_sex) : S(initial_sex),niche(P.initial_niche) {
-        for (int i = 0; i < initial_trait_values.size(); ++i) {
-            traits.push_back(Trait(initial_trait_values[i],
-                                   initial_trait_values[i],
-                                   initial_trait_values[i]));
+               sex initial_sex, rnd_j& rnd) : S(initial_sex),niche(P.initial_niche) {
+        for (int i = 0; i < trait_goals.size(); ++i) {
+            traits.push_back(Trait(trait_goals[i],
+                                   trait_goals[i],
+                                   trait_goals[i]));
+            traits[i].set_phenotype(S, sigma);
         }
+        niche = P.initial_niche;
+        carotenoid_investment = P.init_investment;
+        calculate_resources(trait_goals, P.MaxMism[P.initial_niche], rnd); //I've just set the maximum mismatch to 500 here - that is obv not flexible but we only need maxmis to replicate the results and there maxmis was always 500 so this is ok for now
     }
     
     Individual(const Individual& parent1, const Individual& parent2,
-               double sigma, double recom_rate, rnd_j& rnd) : S(rnd.get_random_sex()),niche(parent1.niche) {
+               Param P, rnd_j& rnd) : S(rnd.get_random_sex()),niche(parent1.niche) {
 
         // recombination
         for (size_t i = 0; i < parent1.traits.size(); ++i) {
-            if (!rnd.bernouilli(recom_rate)) {
+            if (!rnd.bernouilli(P.recom_rate)) {
                 traits.push_back(parent1.traits[i]);
             } else {
                 traits.push_back(parent2.traits[i]);
             }
         }
+        if (!rnd.bernouilli(P.recom_rate)) {
+            carotenoid_investment = parent1.carotenoid_investment;
+        }
+        else {
+            carotenoid_investment = parent2.carotenoid_investment;
+        }
+
+        //mutation&setting phenotype
         for (auto& i : traits) {
             i.mutate(rnd);
-            i.set_phenotype(S, sigma);
+            i.set_phenotype(S, P.sigma);
         }
+        carotenoid_investment = rnd.mutate_trait(carotenoid_investment); //is this correct?
+
+        niche = parent1.niche;
+        calculate_resources(trait_goals, P.MaxMism[parent1.niche], rnd);
+
     }
     
     double calculate_match_to_niche(const std::vector<int>& selection_goals) {
@@ -319,13 +375,13 @@ struct Niche {
                 // I first code here random mating. Non-random mating we need to look at a bit more closely!
                 auto father = males[ rnd.random_number( males.size()) ];
                 
-                auto offspring = Individual(mother, father, P.sigma, P.recom_rate, rnd);
+                auto offspring = Individual(mother, father, Param P, rnd);
                 
                 if (offspring.will_migrate(p, P.lambda, P.basal_migration_rate, rnd)) {
-                    migrants.push_back(offspring);
                     offspring.dispersed = true;
                     offspring.prev_niche = mother.niche;
                     offspring.prev_mismatch = offspring.mismatch;
+                    migrants.push_back(offspring);
                 } else {
                     kids.push_back(offspring);
                 }
@@ -596,9 +652,9 @@ struct Output {
 
 struct Simulation {
     Simulation() {
-      // later on, we can have a look at code to read parameters from file.
-      //  parameters = read_parameters();
-        
+
+        Param parameters;
+        parameters.set_parameters("ParameterFile.txt");
         master_random_generator = rnd_j(parameters);
         record = Output(parameters);
        
@@ -606,19 +662,18 @@ struct Simulation {
         if (parameters.use_random_niches) {
             goals =  create_random_goals();
         } else {
-            // code below not rwitten yet.
-           // goals  = read_niches_from_file("niche_goals.txt");
+            goals = read_niches_from_file("niche_goals.txt");//this line of course does not work because the function returns doubles and goals are integer. But wouldn't it make more sense to make them double?
         }
         
         for (int i = 0; i < parameters.num_niches; ++i) {
             int m = 0;
             int f = 0;
-            if (i == 0) {
+            if (i == parameters.initial_niche) {
                 m = parameters.init_males;
                 f = parameters.init_females;
             }
             
-            world.push_back( Niche(goals[i], m, f, parameters) );
+            world.push_back( Niche(goals[i], m, f, parameters,master_random_generator) );
         }
     }
 
@@ -652,6 +707,33 @@ struct Simulation {
             }
             new_goals.push_back(niche_goals);
         }
+        return new_goals;
+    }
+
+    std::vector<std::vector<double>> read_niches_from_file() {
+
+        std::ifstream ifs("niche_goals.txt");
+        if (!ifs.is_open()) { std::cerr << "Unable to open selection goals file " << parFileName << '\n'; exit(EXIT_FAILURE); }
+        std::vector< std::vector< double >> new_goals;
+        for (size_t niche_nr = 0; niche_nr < parameters.num_niches; niche_nr++) {
+            std::vector<double> new_niche;
+            for (size_t trait_nr = 0; trait_nr < parameters.num_traits; trait_nr++) {
+                std::string parId_IS;
+                ifs >> parId;
+                std::string parID_SHOULD = "Niche_" + std::to_string(niche_nr) + "_Trait_" + std::to_string(trait_nr);
+                if (parId_IS == parId_SHOULD) {
+                    double next_trait;
+                    ifs >> next_trait;
+                    new_niche.push_back(next_trait);
+                }
+                else {
+                    std::cerr << "unknown selection goal in file"; exit(EXIT_FAILURE);
+                }
+            }
+            new_goals.push_back(new_niche);
+        }
+
+        ifs.close();
         return new_goals;
     }
     
