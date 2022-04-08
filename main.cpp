@@ -564,7 +564,7 @@ struct Output {
         //below I tried to add columns names, not sure if I did it right...
         //the main (?) problem is that I of course only want to add column names at the beginning and not every timestep...
         if (t == 0) {//is there a more elegant way of doing this? Something that specifically checks whether the file is still empty? In case I decide to e.g. only save from t=1000 onwards, I'd still want column names then...
-            out_file << "Time" << "\t";
+            out_file << "Time" << "\t" << "numMales" << "\t" << "numFemales" << "\t" << "Niche" << "\t";
             for (size_t TraitNr = 0; TraitNr < P.num_traits; TraitNr++) {
                 out_file << "Trait_" << TraitNr << "\t" << "T" << TraitNr << "_Avg" << "\t" << "T" << TraitNr << "_Stdev" << "\t";
             }
@@ -577,30 +577,29 @@ struct Output {
             for (const auto& j : world[i].males) {
                 individual_info.push_back(j.collect_information());
             }
+            
             for (const auto& j : world[i].females) {
                 individual_info.push_back(j.collect_information());
             }
+            
+            out_file << world[i].males.size() << "\t" << world[i].females.size() << "\t";
+            out_file << i << "\t"; // instead of i, trait name could also work
 
             if (individual_info.empty()) {
                 int num_columns = (5 + P.num_traits * 4) * 2;
                 for (size_t i = 0; i < num_columns; ++i) {
                     out_file << "NA" << "\t";
                 }
+                
             } else {
                 std::vector< double > mean_values = get_mean_values(individual_info);
                 std::vector< double > sd_values = get_sd_values(individual_info, mean_values);
-                out_file << i << "\t"; // instead of i, trait name could also work
-                // readr::read_tsv();
+                
                 for (size_t j = 0; j < mean_values.size(); ++j) {
                     out_file << mean_values[i] << "\t" << sd_values[i] << "\t";
                 }
                 out_file << "\n";
             }
-
-
-
-
-            
         }
         out_file.close();
     }
