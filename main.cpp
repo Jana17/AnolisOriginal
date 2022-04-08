@@ -33,13 +33,18 @@ struct Param {
     double basal_birth_rate = 0.8;
     double basal_migration_rate = 0.01;
     
-    double sigma = 0.01;
+    double sigma = 0.0; // should be  0, 0.5 or 1.
+    
+    double gamma = 0.01; // standard deviation of cauchy distribution of mutation.
+    
     double d_sigma = 0.001;
     
     double mu = 0.01;
     double recom_rate = 0.01;
     
-    size_t seed = 42;
+    size_t start_seed = 42;
+    size_t end_seed   = 43;
+    size_t used_seed;
     
     bool use_random_niches = false;
     
@@ -56,7 +61,7 @@ struct Param {
     
     std::string niche_file_name = "niche_goals.txt";
 
-    std::vector<double>MaxMism{ 410,330,420,460,460,500 };//this is of course a very inelegant way of implementing the mismatch, but we are not keeping the mismatch anyways, just to check if we replicate the results
+    std::vector<double>MaxMism{ 410, 330, 420, 460, 460, 500 };//this is of course a very inelegant way of implementing the mismatch, but we are not keeping the mismatch anyways, just to check if we replicate the results
 
     void set_parameters(std::string parFileName) {
 
@@ -111,8 +116,8 @@ public:
     }
     
     rnd_j(const Param& P) {
-        rndgen = reng_type(P.seed);
-        set_mutate_trait_dist(P.sigma);
+        rndgen = reng_type(P.used_seed);
+        set_mutate_trait_dist(P.gamma);
         set_dewlap_dist(P.d_sigma);
         set_mutate_prob(P.mu);
     }
@@ -162,6 +167,10 @@ public:
         return new_niche;
     }
     
+    double uniform() {
+        return unif_dist(rndgen);
+    }
+    
     
     //// setters:
 
@@ -177,11 +186,22 @@ public:
         mutate_prob = m;
     }
     
+    
+    
+    
 private:
     std::cauchy_distribution<double> cauchy_dist;
     std::bernoulli_distribution coin_flip = std::bernoulli_distribution(0.5); // we can keep this fixed.
     std::normal_distribution<double> dewlap_dist;
+    std::uniform_real_distribution<> unif_dist =
+                                std::uniform_real_distribution<>(0, 1.0);
+
     double mutate_prob;
+};
+
+struct store_info {
+    int index;
+    double dew_lap;
 };
 
 
@@ -367,6 +387,68 @@ struct Niche {
         survival(males, rnd);
         survival(females, rnd);
     }
+
+    
+    bool is_in_candidates(const std::vector<store_info>& v, int index) {
+        for (const auto& i : v) {
+            if (i.index == index) return true;
+        }
+        return false;
+    }
+    
+    int get_father_index(const std::vector< Individual>& males,
+                         int sexsel,
+                         rnd_j& rnd) {
+        if (sexsel == 1) {
+            return rnd.random_number( males.size());
+        }
+        
+        // if the number of males to pick from is larger than the
+        // number of available males, limit choice to all available males.
+        if (sexsel > males.size()) sexsel = males.size();
+        
+        std::vector< store_info > candidates(sexsel);
+        
+        if (sexsel > males.size()) { // border case where there are few males
+            for (int i = 0; i < males.size(); ++i) {
+                candidates[i].index = i;
+                candidates[i].dew_lap = males[i].dewlap;
+            }
+        } else {
+            for (int i = 0; i < sexsel; ++i) {
+                int index = rnd.random_number(males.size());
+                while(is_in_candidates(candidates, index)) index = rnd.random_number(males.size());
+                
+                candidates[i].index = index;
+                candidates[i].dew_lap = males[index].dewlap;
+            }
+        }
+        
+        double s = 0.0;
+        // For later (if Franjo really really really really wants this):
+        // if we want to implement a soft max function
+        // we need to iterate twice over the dewlaps to correct them:
+        // for (auto& i : candidates) {
+        //   i.dewlap = exp(i.dewlap * b); s += i.dewlap;
+        // }
+        // for (auto& i : candidates) {
+        //   i.dewlap *= 1.0 / s;
+        // }
+        // s = 1.0;
+        
+        for (const auto& i : candidates) {
+            s += i.dew_lap;
+        }
+        
+        double r = s * rnd.uniform();
+        int picked_indiv = 0;
+        for (; picked_indiv < candidates.size(); ++picked_indiv) {
+            r -= candidates[picked_indiv].dew_lap;
+            if (r <= 0.0) break;
+        }
+        
+        return picked_indiv;
+    }
     
     void reproduction(rnd_j& rnd, const Param& P) {
         std::vector< Individual > kids;
@@ -375,13 +457,14 @@ struct Niche {
         
         double p = 1.0 * (P.pop_size_max - males.size() + females.size()) / P.pop_size_max;
         if (p < 0.0) p = 0.0;
-        for (auto& mother : females) {
+        for (const auto& mother : females) {
             double prob_repro = p * (0.8 * P.basal_birth_rate + 0.2 * mother.resource_level);
             if (rnd.bernouilli(prob_repro)) {
                 // I first code here random mating. Non-random mating we need to look at a bit more closely!
-                auto father = males[ rnd.random_number( males.size()) ];
                 
-                auto offspring = Individual(mother, father, selection_goals, P, rnd);
+                auto father_index = get_father_index(males, P.SexSel, rnd);
+                
+                auto offspring = Individual(mother, males[father_index], selection_goals, P, rnd);
                 
                 if (offspring.will_migrate(p, P.lambda, P.basal_migration_rate, rnd)) {
                     offspring.dispersed = true;
@@ -452,7 +535,7 @@ struct Output {
         base += "_RecRate_" + std::to_string(P.recom_rate);
         base += "_DewNoise_" + std::to_string(P.d_sigma);
         base += "_SexSel_" + std::to_string(P.SexSel);
-        base += "_Seed_" + std::to_string(P.seed);
+        base += "_Seed_" + std::to_string(P.used_seed);
         base += ".csv";
 
         return base;
@@ -657,10 +740,10 @@ struct Output {
 };
 
 struct Simulation {
-    Simulation() {
+    Simulation(const Param& p, int seed) : parameters(p) {
 
-        Param parameters;
-        parameters.set_parameters("ParameterFile.txt");
+        parameters.used_seed = seed;
+        
         master_random_generator = rnd_j(parameters);
         record = Output(parameters);
        
@@ -757,7 +840,13 @@ struct Simulation {
 
 
 int main() {
-    Simulation sim;
-    sim.run();
+    
+    Param parameters;
+    parameters.set_parameters("ParameterFile.txt");
+
+    for (int seed = parameters.start_seed; seed < parameters.end_seed; ++seed) {
+        Simulation sim(parameters, seed);
+        sim.run();
+    }
     return 0;
 }
