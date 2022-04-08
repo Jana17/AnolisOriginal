@@ -221,6 +221,7 @@ struct Individual {
     double carotenoid_investment;
     double dewlap;
     bool dispersed = false;//I added this in order to be able to output e.g. specifically only dispersers
+
     int prev_niche;
     int niche;
     double prev_mismatch; //mismatch before dispersal, i.e. had they not dispersed
@@ -696,8 +697,13 @@ struct Simulation {
     void distribute_migrants() {
         for (size_t current_niche = 0; current_niche < world.size(); ++current_niche) {
             
-            for (const auto& i : world[current_niche].migrants) {
+            for (auto& i : world[current_niche].migrants) {
                 size_t other_niche = master_random_generator.draw_random_niche(current_niche, world.size());
+                i.niche = static_cast<int>(other_niche);
+                i.calculate_resources(world[other_niche].selection_goals,
+                                      parameters.MaxMism[other_niche],
+                                      master_random_generator); // update resources because of change of niche.
+                
                 world[other_niche].add_individual(i);
             }
         }
