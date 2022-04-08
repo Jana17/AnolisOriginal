@@ -594,7 +594,7 @@ struct Output {
             } else {
                 std::vector< double > mean_values = get_mean_values(individual_info);
                 std::vector< double > sd_values = get_sd_values(individual_info, mean_values);
-                
+                assert(mean_values.size() == sd_values.size());
                 for (size_t j = 0; j < mean_values.size(); ++j) {
                     out_file << mean_values[i] << "\t" << sd_values[i] << "\t";
                 }
@@ -700,7 +700,7 @@ struct Output {
 
 
     std::vector<double> get_mean_values(const std::vector< std::vector< double >>& v) {
-        std::vector<double> m(v.size());
+        std::vector<double> m(v[0].size());
         for (size_t i = 0; i < v[0].size(); ++i) {
           /*  double s = std::accumulate(v.begin(), v.end(), 0.0,
                                        [&](const std::vector<double>& a,
@@ -739,8 +739,8 @@ struct Output {
     }
     std::vector<double> get_sd_values(const std::vector< std::vector< double >>& v,
                                       const std::vector<double> m) {
-        std::vector<double> sd(v.size());
-        for (size_t i = 0; i < v.size(); ++i) {
+        std::vector<double> sd(v[0].size());
+        for (size_t i = 0; i < v[0].size(); ++i) {
             double s = 0.0;
             for (auto j = v.begin(); j != v.end(); ++j) {
                 s += ((*j)[i] - m[i]) * ((*j)[i] - m[i]);
@@ -787,6 +787,12 @@ struct Simulation {
             }
             distribute_migrants();
             record.update(world, t, parameters);
+            
+            std::cout << t << " ";
+            for (size_t i = 0; i < world.size(); ++i) {
+                std::cout << world[i].males.size() + world[i].females.size() << " ";
+            }
+            std::cout << "\n";
         }
     }
 
