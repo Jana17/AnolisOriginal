@@ -11,6 +11,7 @@
 #include <fstream>
 
 #include <vector>
+#include <string>
 #include "rndutils.hpp"
 
 using reng_type = rndutils::default_engine;
@@ -579,14 +580,27 @@ struct Output {
             for (const auto& j : world[i].females) {
                 individual_info.push_back(j.collect_information());
             }
-            std::vector< double > mean_values = get_mean_values(individual_info);
-            std::vector< double > sd_values   = get_sd_values(individual_info, mean_values);
-            out_file << i << "\t"; // instead of i, trait name could also work
-            // readr::read_tsv();
-            for (size_t j = 0; j < mean_values.size(); ++j) {
-                out_file << mean_values[i] << "\t" << sd_values[i] << "\t";
+
+            if (individual_info.empty()) {
+                int num_columns = (5 + P.num_traits * 4) * 2;
+                for (size_t i = 0; i < num_columns; ++i) {
+                    out_file << "NA" << "\t";
+                }
+            } else {
+                std::vector< double > mean_values = get_mean_values(individual_info);
+                std::vector< double > sd_values = get_sd_values(individual_info, mean_values);
+                out_file << i << "\t"; // instead of i, trait name could also work
+                // readr::read_tsv();
+                for (size_t j = 0; j < mean_values.size(); ++j) {
+                    out_file << mean_values[i] << "\t" << sd_values[i] << "\t";
+                }
+                out_file << "\n";
             }
-            out_file << "\n";
+
+
+
+
+            
         }
         out_file.close();
     }
@@ -688,7 +702,7 @@ struct Output {
 
     std::vector<double> get_mean_values(const std::vector< std::vector< double >>& v) {
         std::vector<double> m(v.size());
-        for (size_t i = 0; i < v.size(); ++i) {
+        for (size_t i = 0; i < v[0].size(); ++i) {
           /*  double s = std::accumulate(v.begin(), v.end(), 0.0,
                                        [&](const std::vector<double>& a,
                                            const std::vector<double>& b) {
@@ -815,14 +829,17 @@ struct Simulation {
                 std::string parId_IS;
                 ifs >> parId_IS;
                 std::string parID_SHOULD = "Niche_" + std::to_string(niche_nr) + "_Trait_" + std::to_string(trait_nr);
-                if (parId_IS == parID_SHOULD) {
+                //if (parId_IS == parID_SHOULD) {
                     double next_trait;
                     ifs >> next_trait;
                     new_niche.push_back(next_trait);
-                }
-                else {
-                    std::cerr << "unknown selection goal in file"; exit(EXIT_FAILURE);
-                }
+                //}
+                /*else {
+                    std::cerr << "unknown selection goal in file"; 
+                    std::cerr << "found: " << parId_IS << std::endl;
+                    std::cerr << "expected: " << parID_SHOULD << std::endl;
+                    exit(EXIT_FAILURE);
+                }*/
             }
             new_goals.push_back(new_niche);
         }
