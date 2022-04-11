@@ -14,6 +14,9 @@
 #include <string>
 #include "rndutils.hpp"
 
+#include <chrono>
+
+
 using reng_type = rndutils::default_engine;
 enum sex {male, female};
 
@@ -235,7 +238,7 @@ struct Trait {
 
 struct Individual {
     std::vector< Trait > traits;
-    const sex S;
+    sex S;
     double resource_level;
     double mismatch;
     double fit_to_niche;
@@ -268,17 +271,15 @@ struct Individual {
                rnd_j& rnd) : S(rnd.get_random_sex()),niche(parent1.niche) {
 
         // recombination
+        traits = parent1.traits;
         for (size_t i = 0; i < parent1.traits.size(); ++i) {
-            if (!rnd.bernouilli(P.recom_rate)) {
-                traits.push_back(parent1.traits[i]);
-            } else {
-                traits.push_back(parent2.traits[i]);
+            if (rnd.bernouilli(P.recom_rate)) {
+                traits[i] = parent2.traits[i];
             }
         }
-        if (!rnd.bernouilli(P.recom_rate)) {
-            carotenoid_investment = parent1.carotenoid_investment;
-        }
-        else {
+        
+        carotenoid_investment = parent1.carotenoid_investment;
+        if (rnd.bernouilli(P.recom_rate)) {
             carotenoid_investment = parent2.carotenoid_investment;
         }
 
@@ -372,6 +373,12 @@ struct Niche {
     
     
     void survival(std::vector< Individual>& v, rnd_j& rnd) {
+        if (v.empty()) return;
+        
+        
+        // if order of individuals is important:
+        
+      /*
         std::vector< Individual > alive;
         for (const auto& i : v) {
             double indiv_deathrate = 0.75 * death_rate +
@@ -381,6 +388,19 @@ struct Niche {
             }
         }
         std::swap(v, alive);
+      */
+        // else (~2x faster!) :
+        
+        for (size_t i = 0; i < v.size(); ) {
+            double indiv_deathrate = 0.75 * death_rate +
+                                     0.25 * std::exp(-2 * pow(v[i].resource_level, 8));
+            if (rnd.bernouilli(indiv_deathrate)) {
+                v[i] = v.back();
+                v.pop_back();
+            } else {
+                ++i;
+            }
+        }
     }
     
     
@@ -456,7 +476,9 @@ struct Niche {
         
         if (males.empty()) return; // no reproduction
         
-        double p = 1.0 * (P.pop_size_max - males.size() + females.size()) / P.pop_size_max;
+        auto current_pop_size = males.size() + females.size();
+        
+        double p = 1.0 * (P.pop_size_max - current_pop_size) / P.pop_size_max;
         if (p < 0.0) p = 0.0;
         for (const auto& mother : females) {
             double prob_repro = p * (0.8 * P.basal_birth_rate + 0.2 * mother.resource_level);
@@ -482,7 +504,7 @@ struct Niche {
             if (i.S == female) females.push_back(i);
             if (i.S == male)   males.push_back(i);
         }
-        kids.clear(); // just to be sure.
+        // kids.clear(); // just to be sure.
     }
     
     void add_individual(const Individual& new_individual) {
@@ -574,6 +596,7 @@ struct Output {
         out_file << t << "\t";
         for (size_t i = 0; i < world.size(); ++i) {
             std::vector< std::vector< double > > individual_info;
+            individual_info.reserve(world[i].males.size() + world[i].females.size());
             for (const auto& j : world[i].males) {
                 individual_info.push_back(j.collect_information());
             }
@@ -780,6 +803,8 @@ struct Simulation {
     }
 
     void run() {
+        auto t1 = std::chrono::system_clock::now();
+        
         for (size_t t = 0; t < parameters.number_of_timesteps; ++t) {
             for (size_t i = 0; i < world.size(); ++i) {
                 world[i].viability_selection(master_random_generator);
@@ -792,6 +817,13 @@ struct Simulation {
             for (size_t i = 0; i < world.size(); ++i) {
                 std::cout << world[i].males.size() + world[i].females.size() << " ";
             }
+            
+            auto t2 = std::chrono::system_clock::now();
+            std::chrono::duration<double> elapsed_seconds = t2 - t1;
+            t1 = t2;
+            std::cout << " " << elapsed_seconds.count() << "s";
+            
+            
             std::cout << "\n";
         }
     }
