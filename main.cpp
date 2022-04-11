@@ -476,7 +476,7 @@ struct Niche {
         
         if (males.empty()) return; // no reproduction
         
-        auto current_pop_size = males.size() + females.size();
+        int current_pop_size = static_cast<int>(males.size()) + static_cast<int>(females.size());
         
         double p = 1.0 * (P.pop_size_max - current_pop_size) / P.pop_size_max;
         if (p < 0.0) p = 0.0;
@@ -808,6 +808,9 @@ struct Simulation {
         for (size_t t = 0; t < parameters.number_of_timesteps; ++t) {
             for (size_t i = 0; i < world.size(); ++i) {
                 world[i].viability_selection(master_random_generator);
+                if (i == 3 && t > 245) {
+                    int a = 5;
+                }
                 world[i].reproduction(master_random_generator, parameters);
             }
             distribute_migrants();
