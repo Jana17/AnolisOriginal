@@ -23,8 +23,8 @@ enum sex {male, female};
 enum output_type {only_average, only_females, indiv_data_end, only_dispersers};
 
 struct Param {
-    int number_of_timesteps = 20000;
-    int save_interval = 10; //e.g. save output only every 10 timesteps
+    int number_of_timesteps = 10000;
+    int save_interval = 1000; //e.g. save output only every 10 timesteps
         
     int num_niches = 6;
     int num_traits = 6;
@@ -493,25 +493,24 @@ struct Niche {
                     offspring.dispersed = true;
                     offspring.prev_niche = mother.niche;
                     offspring.prev_mismatch = offspring.mismatch;
-                    migrants.push_back(offspring);
+                    migrants.push_back(std::move(offspring));
                 } else {
-                    kids.push_back(offspring);
+                    kids.push_back(std::move(offspring));
                 }
             }
         }
         
         for (auto& i : kids) {
-            if (i.S == female) females.push_back(i);
-            if (i.S == male)   males.push_back(i);
+            if (i.S == female) females.push_back(std::move(i));
+            if (i.S == male)   males.push_back(std::move(i));
         }
-        // kids.clear(); // just to be sure.
     }
     
     void add_individual(const Individual& new_individual) {
         if (new_individual.S == female) {
-            females.push_back(new_individual);
+            females.push_back(std::move(new_individual));
         } else {
-            males.push_back(new_individual);
+            males.push_back(std::move(new_individual));
         }
     }
     
@@ -536,6 +535,8 @@ struct Output {
     output_type o;
     
     void update(const std::vector< Niche >& world, size_t t, const Param& P) {
+        if (t % P.save_interval != 0) return;
+        
         switch(o) {
             case only_average:
                 output_averages(world, t, P);
@@ -803,14 +804,10 @@ struct Simulation {
     }
 
     void run() {
-        auto t1 = std::chrono::system_clock::now();
         
         for (size_t t = 0; t < parameters.number_of_timesteps; ++t) {
             for (size_t i = 0; i < world.size(); ++i) {
                 world[i].viability_selection(master_random_generator);
-                if (i == 3 && t > 245) {
-                    int a = 5;
-                }
                 world[i].reproduction(master_random_generator, parameters);
             }
             distribute_migrants();
@@ -820,13 +817,6 @@ struct Simulation {
             for (size_t i = 0; i < world.size(); ++i) {
                 std::cout << world[i].males.size() + world[i].females.size() << " ";
             }
-            
-            auto t2 = std::chrono::system_clock::now();
-            std::chrono::duration<double> elapsed_seconds = t2 - t1;
-            t1 = t2;
-            std::cout << " " << elapsed_seconds.count() << "s";
-            
-            
             std::cout << "\n";
         }
     }
@@ -901,9 +891,15 @@ int main() {
     Param parameters;
     parameters.set_parameters("ParameterFile.txt");
 
-    for (int seed = parameters.start_seed; seed < parameters.end_seed; ++seed) {
+    auto t1 = std::chrono::system_clock::now();
+    
+    for (size_t seed = parameters.start_seed; seed < parameters.end_seed; ++seed) {
         Simulation sim(parameters, seed);
         sim.run();
+        auto t2 = std::chrono::system_clock::now();
+        std::chrono::duration<double> elapsed_seconds = t2 - t1;
+        t1 = t2;
+        std::cout << "This took: " << elapsed_seconds.count() << " seconds\n";
     }
     return 0;
 }
