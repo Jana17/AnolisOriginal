@@ -20,7 +20,7 @@
 using reng_type = rndutils::default_engine;
 enum sex {male, female};
 
-enum output_type {only_average, only_females, indiv_data_end, only_dispersers};
+enum output_type {only_average, only_females, indiv_data_end, only_dispersers, extinction_metrics};
 
 struct Param {
     int number_of_timesteps = 10000;
@@ -46,8 +46,8 @@ struct Param {
     double mu = 0.01;
     double recom_rate = 0.01;
     
-    size_t start_seed = 42;
-    size_t end_seed   = 43;
+    size_t start_seed = 0;
+    size_t end_seed   = 30;
     size_t used_seed;
     
     bool use_random_niches = false;
@@ -58,8 +58,9 @@ struct Param {
 
     int SexSel = 1; //Between how many males can the female choose? The higher this variable is, the stronger sexual selection
     
-    output_type chosen_output_type = only_average;
+    output_type chosen_output_type = extinction_metrics;
     std::string only_average_file_name = "averages.txt";
+    std::string extinction_metrics_file_name = "extinction_metrics";
     std::string final_indiv_file_name = "final_indiv_data.txt";
     std::string only_dispersers_file_name = "dispersers.txt";
     
@@ -261,7 +262,7 @@ struct Individual {
         }
         niche = P.initial_niche;
         carotenoid_investment = P.init_investment;
-        calculate_resources(trait_goals, P.MaxMism[P.initial_niche], rnd); //I've just set the maximum mismatch to 500 here - that is obv not flexible but we only need maxmis to replicate the results and there maxmis was always 500 so this is ok for now
+        calculate_resources(trait_goals, P.MaxMism[P.initial_niche], rnd);
     }
     
     Individual(const Individual& parent1,
@@ -483,8 +484,7 @@ struct Niche {
         for (const auto& mother : females) {
             double prob_repro = p * (0.8 * P.basal_birth_rate + 0.2 * mother.resource_level);
             if (rnd.bernouilli(prob_repro)) {
-                // I first code here random mating. Non-random mating we need to look at a bit more closely!
-                
+                                
                 auto father_index = get_father_index(males, P.SexSel, rnd);
                 
                 auto offspring = Individual(mother, males[father_index], selection_goals, P, rnd);
@@ -548,7 +548,10 @@ struct Output {
                 output_indivData_end(world, t, P);
             case only_dispersers:
                 output_dispersers(world, t, P);
-                break;            
+                break;
+            case extinction_metrics:
+                output_extinction_metrics(world, t, P);
+                break;
         }
     }
 
@@ -575,6 +578,9 @@ struct Output {
                 break;
             case only_dispersers:
                 return make_file_name(P.only_dispersers_file_name, P);
+            case extinction_metrics:
+                return make_file_name(P.extinction_metrics_file_name, P);
+                break;
             default:
                 return "test.txt";
                 break;
@@ -594,7 +600,6 @@ struct Output {
             out_file << "\n";
         }
 
-        out_file << t << "\t";
         for (size_t i = 0; i < world.size(); ++i) {
             std::vector< std::vector< double > > individual_info;
             individual_info.reserve(world[i].males.size() + world[i].females.size());
@@ -606,6 +611,7 @@ struct Output {
                 individual_info.push_back(j.collect_information());
             }
             
+            out_file << t << "\t";
             out_file << world[i].males.size() << "\t" << world[i].females.size() << "\t";
             out_file << i << "\t"; // instead of i, trait name could also work
 
@@ -614,6 +620,7 @@ struct Output {
                 for (size_t i = 0; i < num_columns; ++i) {
                     out_file << "NA" << "\t";
                 }
+                out_file << "\n";
                 
             } else {
                 std::vector< double > mean_values = get_mean_values(individual_info);
@@ -723,6 +730,29 @@ struct Output {
     
 
 
+    void output_extinction_metrics(const std::vector< Niche >& world, size_t t, const Param& P) {
+        std::ofstream out_file(file_name.c_str(), std::ios::app);
+        //I tried to add column names here but not sure if it worked
+        if (t == 0) {
+            out_file << "Time" << "\t";
+            for (size_t NicheNr = 0; NicheNr < P.num_niches; NicheNr++) {
+                out_file
+                    << "Niche_ID" << "\t"
+                    << "Niche_" << NicheNr << "_NrM" << "\t"
+                    << "Niche_" << NicheNr << "_NrF" << "\t";
+            }
+            out_file << "\n";
+        }
+
+        out_file << t << "\t";
+        for (size_t i = 0; i < world.size(); ++i) {
+            out_file << i << "\t";
+            out_file << world[i].males.size() << "\t" << world[i].females.size() << "\t";
+        }
+        out_file << "\n";
+
+    }
+
     std::vector<double> get_mean_values(const std::vector< std::vector< double >>& v) {
         std::vector<double> m(v[0].size());
         for (size_t i = 0; i < v[0].size(); ++i) {
@@ -780,7 +810,7 @@ struct Simulation {
     Simulation(const Param& p, int seed) : parameters(p) {
 
         parameters.used_seed = seed;
-        
+        std::cout << "Seed: " << seed << std::endl;
         master_random_generator = rnd_j(parameters);
         record = Output(parameters);
        
@@ -813,11 +843,14 @@ struct Simulation {
             distribute_migrants();
             record.update(world, t, parameters);
             
-            std::cout << t << " ";
-            for (size_t i = 0; i < world.size(); ++i) {
-                std::cout << world[i].males.size() + world[i].females.size() << " ";
+            for (t % 1000 == 0) {
+                std::cout << "Time: " << t << " ";
+                /*for (size_t i = 0; i < world.size(); ++i) {
+                    std::cout << world[i].males.size() + world[i].females.size() << " ";
+                }*/
+                std::cout << "\n";
+
             }
-            std::cout << "\n";
         }
     }
 
