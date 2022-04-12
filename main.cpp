@@ -833,6 +833,7 @@ struct Simulation {
                 
                 world[other_niche].add_individual(i);
             }
+            world[current_niche].migrants.clear();
         }
     }
     
