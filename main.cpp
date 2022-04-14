@@ -20,7 +20,7 @@
 using reng_type = rndutils::default_engine;
 enum sex {male, female};
 
-enum output_type {only_average, only_females, indiv_data_end, only_dispersers, extinction_metrics};
+enum output_type {only_average, only_females, indiv_data_end, only_dispersers, extinction_metrics, cInvest};
 
 struct Param {
     int number_of_timesteps = 10000;
@@ -58,9 +58,10 @@ struct Param {
 
     int SexSel = 1; //Between how many males can the female choose? The higher this variable is, the stronger sexual selection
     
-    output_type chosen_output_type = extinction_metrics;
+    output_type chosen_output_type = cInvest;
     std::string only_average_file_name = "averages.txt";
     std::string extinction_metrics_file_name = "extinction_metrics";
+    std::string cInvest_file_name = "cInvest";
     std::string final_indiv_file_name = "final_indiv_data.txt";
     std::string only_dispersers_file_name = "dispersers.txt";
     
@@ -250,6 +251,9 @@ struct Individual {
     int prev_niche;
     int niche;
     double prev_mismatch; //mismatch before dispersal, i.e. had they not dispersed
+
+    int age;
+    int LRS;
     
     Individual(const std::vector< double >& trait_goals,
                double sigma, Param P,
@@ -400,6 +404,7 @@ struct Niche {
                 v.pop_back();
             } else {
                 ++i;
+                v[i].age = v[i].age + 1;
             }
         }
     }
@@ -488,7 +493,10 @@ struct Niche {
                 auto father_index = get_father_index(males, P.SexSel, rnd);
                 
                 auto offspring = Individual(mother, males[father_index], selection_goals, P, rnd);
-                
+
+                mother.LRS = mother.LRS + 1;
+                males[father_index].LRS = males[father_index].LRS + 1;
+
                 if (offspring.will_migrate(p, P.lambda, P.basal_migration_rate, rnd)) {
                     offspring.dispersed = true;
                     offspring.prev_niche = mother.niche;
@@ -552,6 +560,9 @@ struct Output {
             case extinction_metrics:
                 output_extinction_metrics(world, t, P);
                 break;
+            case cInvest:
+                output_cInvest(world, t, P);
+                break;
         }
     }
 
@@ -580,6 +591,9 @@ struct Output {
                 return make_file_name(P.only_dispersers_file_name, P);
             case extinction_metrics:
                 return make_file_name(P.extinction_metrics_file_name, P);
+                break;
+            case cInvest:
+                return make_file_name(P.cInvest_file_name, P);
                 break;
             default:
                 return "test.txt";
@@ -753,6 +767,33 @@ struct Output {
 
     }
 
+
+    void output_cInvest(const std::vector< Niche >& world, size_t t,
+        const Param& P) {
+        std::ofstream out_file(file_name.c_str(), std::ios::app);
+        if (t == 0) {
+            out_file << "Time" << "\t" << "Niche" << "\t" << "Sex" << "\t" << "cInvest" << "\t" << "Dispersed" << "\t" << "Age" << "\t" << "LRS" << "\t";
+            out_file << "\n";
+        }
+
+        if (t%P.save_interval == 0) {
+            for (size_t i = 0; i < world.size(); ++i) {
+                for (size_t j = 0; j < world[i].males.size(); ++j) {
+                    out_file << t << "\t" << i << "\t" << world[i].males[j].S << "\t" << world[i].males[j].carotenoid_investment << "\t" 
+                        << world[i].males[j].dispersed << "\t" << world[i].males[j].age << "\t" << world[i].males[j].LRS << "\t";
+                    out_file << "\n";
+                }
+                for (size_t j = 0; j < world[i].females.size(); ++j) {
+                    out_file << t << "\t" << i << "\t" << world[i].females[j].S << "\t" << world[i].females[j].carotenoid_investment << "\t" 
+                        << world[i].females[j].dispersed << "\t" << world[i].females[j].age << "\t" << world[i].females[j].LRS << "\t";
+                    out_file << "\n";
+                }
+            }
+        }
+        out_file.close();
+    }
+
+
     std::vector<double> get_mean_values(const std::vector< std::vector< double >>& v) {
         std::vector<double> m(v[0].size());
         for (size_t i = 0; i < v[0].size(); ++i) {
@@ -843,7 +884,7 @@ struct Simulation {
             distribute_migrants();
             record.update(world, t, parameters);
             
-            for (t % 1000 == 0) {
+            if (t % 1000 == 0) {
                 std::cout << "Time: " << t << " ";
                 /*for (size_t i = 0; i < world.size(); ++i) {
                     std::cout << world[i].males.size() + world[i].females.size() << " ";
