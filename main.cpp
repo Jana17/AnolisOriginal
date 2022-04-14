@@ -23,11 +23,11 @@ enum sex {male, female};
 enum output_type {only_average, only_females, indiv_data_end, only_dispersers, extinction_metrics, cInvest};
 
 struct Param {
-    int number_of_timesteps = 10000;
+    size_t number_of_timesteps = 10000;
     int save_interval = 1000; //e.g. save output only every 10 timesteps
         
-    int num_niches = 6;
-    int num_traits = 6;
+    size_t num_niches = 6;
+    size_t num_traits = 6;
     int initial_niche = 5;//which niche do you start in?
     
     int pop_size_max = 1000;
@@ -46,9 +46,9 @@ struct Param {
     double mu = 0.01;
     double recom_rate = 0.01;
     
-    size_t start_seed = 0;
-    size_t end_seed   = 30;
-    size_t used_seed;
+    int start_seed = 0;
+    int end_seed   = 30;
+    int used_seed;
     
     bool use_random_niches = false;
     
@@ -206,7 +206,7 @@ private:
 };
 
 struct store_info {
-    int index;
+    size_t index;
     double dew_lap;
 };
 
@@ -258,7 +258,7 @@ struct Individual {
     Individual(const std::vector< double >& trait_goals,
                double sigma, Param P,
                sex initial_sex, rnd_j& rnd) : S(initial_sex),niche(P.initial_niche) {
-        for (int i = 0; i < trait_goals.size(); ++i) {
+        for (size_t i = 0; i < trait_goals.size(); ++i) {
             traits.push_back(Trait(trait_goals[i],
                                    trait_goals[i],
                                    trait_goals[i]));
@@ -267,6 +267,8 @@ struct Individual {
         niche = P.initial_niche;
         carotenoid_investment = P.init_investment;
         calculate_resources(trait_goals, P.MaxMism[P.initial_niche], rnd);
+        age = 0;
+        LRS = 0;
     }
     
     Individual(const Individual& parent1,
@@ -297,6 +299,8 @@ struct Individual {
 
         niche = parent1.niche;
         calculate_resources(trait_goals, P.MaxMism[niche], rnd);
+        age = 0;
+        LRS = 0;
     }
     
     double calculate_match_to_niche(const std::vector<double>& selection_goals) {
@@ -416,37 +420,39 @@ struct Niche {
     }
 
     
-    bool is_in_candidates(const std::vector<store_info>& v, int index) {
+    bool is_in_candidates(const std::vector<store_info>& v, size_t index) {
         for (const auto& i : v) {
             if (i.index == index) return true;
         }
         return false;
     }
     
-    int get_father_index(const std::vector< Individual>& males,
+    size_t get_father_index(const std::vector< Individual>& males,
                          int sexsel,
                          rnd_j& rnd) {
         if (sexsel == 1) {
-            return rnd.random_number( males.size());
+            return static_cast<int>(rnd.random_number( males.size()));
         }
         
         // if the number of males to pick from is larger than the
         // number of available males, limit choice to all available males.
-        if (sexsel > males.size()) sexsel = males.size();
+        if (sexsel > males.size()) sexsel = static_cast<int>(males.size());
         
         std::vector< store_info > candidates(sexsel);
         
         if (sexsel > males.size()) { // border case where there are few males
-            for (int i = 0; i < males.size(); ++i) {
+            for (size_t i = 0; i < males.size(); ++i) {
                 candidates[i].index = i;
                 candidates[i].dew_lap = males[i].dewlap;
             }
         } else {
             for (int i = 0; i < sexsel; ++i) {
-                int index = rnd.random_number(males.size());
-                while(is_in_candidates(candidates, index)) index = rnd.random_number(males.size());
+                size_t index = rnd.random_number(males.size());
+                while(is_in_candidates(candidates, index)) {
+                    index = rnd.random_number(males.size());
+                }
                 
-                candidates[i].index = index;
+                candidates[i].index = static_cast<int>(index);
                 candidates[i].dew_lap = males[index].dewlap;
             }
         }
@@ -468,7 +474,7 @@ struct Niche {
         }
         
         double r = s * rnd.uniform();
-        int picked_indiv = 0;
+        size_t picked_indiv = 0;
         for (; picked_indiv < candidates.size(); ++picked_indiv) {
             r -= candidates[picked_indiv].dew_lap;
             if (r <= 0.0) break;
@@ -486,7 +492,7 @@ struct Niche {
         
         double p = 1.0 * (P.pop_size_max - current_pop_size) / P.pop_size_max;
         if (p < 0.0) p = 0.0;
-        for (const auto& mother : females) {
+        for (auto& mother : females) {
             double prob_repro = p * (0.8 * P.basal_birth_rate + 0.2 * mother.resource_level);
             if (rnd.bernouilli(prob_repro)) {
                                 
@@ -630,7 +636,7 @@ struct Output {
             out_file << i << "\t"; // instead of i, trait name could also work
 
             if (individual_info.empty()) {
-                int num_columns = (5 + P.num_traits * 4) * 2;
+                size_t num_columns = (5 + P.num_traits * 4) * 2;
                 for (size_t i = 0; i < num_columns; ++i) {
                     out_file << "NA" << "\t";
                 }
@@ -663,7 +669,7 @@ struct Output {
         }
         out_file << "\n";
 
-        if (t == P.number_of_timesteps - 1) {
+        if (static_cast<int>(t) == (P.number_of_timesteps - 1)) {
            
             for (size_t i = 0; i < world.size(); ++i) {
                 //for (const auto& j : world[i].males) {
@@ -884,11 +890,12 @@ struct Simulation {
             distribute_migrants();
             record.update(world, t, parameters);
             
-            if (t % 1000 == 0) {
+
+            if (t % parameters.save_interval == 0) {
                 std::cout << "Time: " << t << " ";
-                /*for (size_t i = 0; i < world.size(); ++i) {
+                for (size_t i = 0; i < world.size(); ++i) {
                     std::cout << world[i].males.size() + world[i].females.size() << " ";
-                }*/
+                }
                 std::cout << "\n";
 
             }
@@ -968,7 +975,7 @@ int main() {
 
     auto t1 = std::chrono::system_clock::now();
     
-    for (size_t seed = parameters.start_seed; seed < parameters.end_seed; ++seed) {
+    for (int seed = parameters.start_seed; seed < parameters.end_seed; ++seed) {
         Simulation sim(parameters, seed);
         sim.run();
         auto t2 = std::chrono::system_clock::now();
