@@ -12,6 +12,10 @@
 
 #include <vector>
 #include <string>
+
+#include <mutex>
+
+
 #include "rndutils.hpp"
 
 #include <chrono>
@@ -515,8 +519,8 @@ struct Niche {
         }
         
         for (auto& i : kids) {
-            if (i.S == female) females.push_back(std::move(i));
-            if (i.S == male)   males.push_back(std::move(i));
+            if (i.S == female) females.push_back(i);
+            if (i.S == male)   males.push_back(i);
         }
     }
     
@@ -610,15 +614,16 @@ struct Output {
     void output_averages(const std::vector< Niche >& world, size_t t,
                          const Param& P) {
         std::ofstream out_file(file_name.c_str(), std::ios::app);
-        //below I tried to add columns names, not sure if I did it right...
-        //the main (?) problem is that I of course only want to add column names at the beginning and not every timestep...
-        if (t == 0) {//is there a more elegant way of doing this? Something that specifically checks whether the file is still empty? In case I decide to e.g. only save from t=1000 onwards, I'd still want column names then...
+        
+        static std::once_flag header_written;
+        
+        std::call_once(header_written, [&]() {
             out_file << "Time" << "\t" << "numMales" << "\t" << "numFemales" << "\t" << "Niche" << "\t";
             for (size_t TraitNr = 0; TraitNr < P.num_traits; TraitNr++) {
                 out_file << "Trait_" << TraitNr << "\t" << "T" << TraitNr << "_Avg" << "\t" << "T" << TraitNr << "_Stdev" << "\t";
             }
             out_file << "\n";
-        }
+        });
 
         for (size_t i = 0; i < world.size(); ++i) {
             std::vector< std::vector< double > > individual_info;
@@ -660,14 +665,18 @@ struct Output {
                               const Param& P) {
         std::ofstream out_file(file_name.c_str(), std::ios::app);
         //I tried to add column names here but not sure if it worked
-        out_file << "Time" << "\t" << "Sex" << "\t" << "Resources" << "\t" << "Mismatch" << "\t" << "C_investment" << "\t" << "Dewlap" << "\t";
-        for (size_t TraitNr = 0; TraitNr < P.num_traits; TraitNr++) {//Do I need to pass Param to the function if I use it here?
-            out_file << TraitNr << "_A" << "\t";
-            out_file << TraitNr << "_B" << "\t";
-            out_file << TraitNr << "_C" << "\t";
-            out_file << TraitNr << "_Phen" << "\t";
-        }
-        out_file << "\n";
+        static std::once_flag header_written;
+        
+        std::call_once(header_written, [&]() {
+            out_file << "Time" << "\t" << "Sex" << "\t" << "Resources" << "\t" << "Mismatch" << "\t" << "C_investment" << "\t" << "Dewlap" << "\t";
+            for (size_t TraitNr = 0; TraitNr < P.num_traits; TraitNr++) {//Do I need to pass Param to the function if I use it here?
+                out_file << TraitNr << "_A" << "\t";
+                out_file << TraitNr << "_B" << "\t";
+                out_file << TraitNr << "_C" << "\t";
+                out_file << TraitNr << "_Phen" << "\t";
+            }
+            out_file << "\n";
+        });
 
         if (static_cast<int>(t) == (P.number_of_timesteps - 1)) {
            
@@ -705,7 +714,9 @@ struct Output {
     void output_dispersers(const std::vector< Niche >& world, size_t t, const Param& P) {
         std::ofstream out_file(file_name.c_str(), std::ios::app);
         //I tried to add column names here but not sure if it worked
-        if (t == 0) {
+        static std::once_flag header_written;
+        
+        std::call_once(header_written, [&]() {
             out_file << "Time" << "\t" << "Sex" << "\t" << "Resources" << "\t" << "C_investment" << "\t" << "Dewlap" << "\t";
             for (size_t TraitNr = 0; TraitNr < P.num_traits; TraitNr++) {//Do I need to pass Param to the function if I use it here?
                 out_file << TraitNr << "_A" << "\t" ;
@@ -715,7 +726,7 @@ struct Output {
             }
             out_file << "NicheBefore" << "\t" << "NicheAfter" << "\t" << "MismatchBefore" << "\t" << "MismatchAfter" << "\t";
             out_file << "\n";
-        }
+        });
 
         for (size_t i = 0; i < world.size(); ++i) {
             // for (const auto& j : world[i].males) {
@@ -753,7 +764,9 @@ struct Output {
     void output_extinction_metrics(const std::vector< Niche >& world, size_t t, const Param& P) {
         std::ofstream out_file(file_name.c_str(), std::ios::app);
         //I tried to add column names here but not sure if it worked
-        if (t == 0) {
+        static std::once_flag header_written;
+        
+        std::call_once(header_written, [&]() {
             out_file << "Time" << "\t";
             for (size_t NicheNr = 0; NicheNr < P.num_niches; NicheNr++) {
                 out_file
@@ -762,7 +775,7 @@ struct Output {
                     << "Niche_" << NicheNr << "_NrF" << "\t";
             }
             out_file << "\n";
-        }
+        });
 
         out_file << t << "\t";
         for (size_t i = 0; i < world.size(); ++i) {
@@ -770,19 +783,22 @@ struct Output {
             out_file << world[i].males.size() << "\t" << world[i].females.size() << "\t";
         }
         out_file << "\n";
-
+        out_file.close();
     }
 
 
     void output_cInvest(const std::vector< Niche >& world, size_t t,
         const Param& P) {
         std::ofstream out_file(file_name.c_str(), std::ios::app);
-        if (t == 0) {
+        
+        static std::once_flag header_written;
+        
+        std::call_once(header_written, [&]() {
             out_file << "Time" << "\t" << "Niche" << "\t" << "Sex" << "\t" << "cInvest" << "\t" << "Dispersed" << "\t" << "Age" << "\t" << "LRS" << "\t";
             out_file << "\n";
-        }
+        });
 
-        if (t%P.save_interval == 0) {
+        if (t % P.save_interval == 0) {
             for (size_t i = 0; i < world.size(); ++i) {
                 for (size_t j = 0; j < world[i].males.size(); ++j) {
                     out_file << t << "\t" << i << "\t" << world[i].males[j].S << "\t" << world[i].males[j].carotenoid_investment << "\t" 
