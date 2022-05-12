@@ -408,8 +408,8 @@ struct Niche {
                 v.pop_back();
             }
             else {
-                ++i;
                 v[i].age = v[i].age + 1;
+                ++i;
             }
         }
     }
