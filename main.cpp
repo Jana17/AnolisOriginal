@@ -613,16 +613,22 @@ struct Output {
 
     void output_averages(const std::vector< Niche >& world, size_t t,
         const Param& P) {
-        std::ofstream out_file(file_name.c_str(), std::ios::app);
-        //below I tried to add columns names, not sure if I did it right...
-        //the main (?) problem is that I of course only want to add column names at the beginning and not every timestep...
-        if (t == 0) {//is there a more elegant way of doing this? Something that specifically checks whether the file is still empty? In case I decide to e.g. only save from t=1000 onwards, I'd still want column names then...
+        static std::once_flag header_written;
+       
+        //I tried to add column names here but not sure if it worked
+        std::call_once(header_written, [&]() {
+            std::ofstream out_file(file_name.c_str());
+            
             out_file << "Time" << "\t" << "numMales" << "\t" << "numFemales" << "\t" << "Niche" << "\t";
             for (size_t TraitNr = 0; TraitNr < P.num_traits; TraitNr++) {
                 out_file << "Trait_" << TraitNr << "\t" << "T" << TraitNr << "_Avg" << "\t" << "T" << TraitNr << "_Stdev" << "\t";
             }
             out_file << "\n";
-        }
+            out_file.close();
+        });
+        
+        std::ofstream out_file(file_name.c_str(), std::ios::app);
+    
 
         for (size_t i = 0; i < world.size(); ++i) {
             std::vector< std::vector< double > > individual_info;
@@ -663,17 +669,25 @@ struct Output {
 
     void output_indivData_end(const std::vector< Niche >& world, size_t t,
         const Param& P) {
-        std::ofstream out_file(file_name.c_str(), std::ios::app);
+        static std::once_flag header_written;
+       
         //I tried to add column names here but not sure if it worked
-        out_file << "Time" << "\t" << "Sex" << "\t" << "Resources" << "\t" << "Mismatch" << "\t" << "C_investment" << "\t" << "Dewlap" << "\t";
-        for (size_t TraitNr = 0; TraitNr < P.num_traits; TraitNr++) {//Do I need to pass Param to the function if I use it here?
-            out_file << TraitNr << "_A" << "\t";
-            out_file << TraitNr << "_B" << "\t";
-            out_file << TraitNr << "_C" << "\t";
-            out_file << TraitNr << "_Phen" << "\t";
-        }
-        out_file << "\n";
-
+        std::call_once(header_written, [&]() {
+            std::ofstream out_file(file_name.c_str());
+        
+            out_file << "Time" << "\t" << "Sex" << "\t" << "Resources" << "\t" << "Mismatch" << "\t" << "C_investment" << "\t" << "Dewlap" << "\t";
+            for (size_t TraitNr = 0; TraitNr < P.num_traits; TraitNr++) {//Do I need to pass Param to the function if I use it here?
+                out_file << TraitNr << "_A" << "\t";
+                out_file << TraitNr << "_B" << "\t";
+                out_file << TraitNr << "_C" << "\t";
+                out_file << TraitNr << "_Phen" << "\t";
+            }
+            out_file << "\n";
+            out_file.close();
+        });
+        
+        std::ofstream out_file(file_name.c_str(), std::ios::app);
+        
         if (static_cast<int>(t) == (P.number_of_timesteps - 1)) {
 
             for (size_t i = 0; i < world.size(); ++i) {
@@ -708,9 +722,12 @@ struct Output {
     }
 
     void output_dispersers(const std::vector< Niche >& world, size_t t, const Param& P) {
-        std::ofstream out_file(file_name.c_str(), std::ios::app);
         //I tried to add column names here but not sure if it worked
-        if (t == 0) {
+        static std::once_flag header_written;
+        
+        std::call_once(header_written, [&]() {
+            std::ofstream out_file(file_name.c_str());
+            
             out_file << "Time" << "\t" << "Sex" << "\t" << "Resources" << "\t" << "C_investment" << "\t" << "Dewlap" << "\t";
             for (size_t TraitNr = 0; TraitNr < P.num_traits; TraitNr++) {//Do I need to pass Param to the function if I use it here?
                 out_file << TraitNr << "_A" << "\t";
@@ -720,8 +737,11 @@ struct Output {
             }
             out_file << "NicheBefore" << "\t" << "NicheAfter" << "\t" << "MismatchBefore" << "\t" << "MismatchAfter" << "\t";
             out_file << "\n";
-        }
-
+            out_file.close();
+        });
+                       
+       std::ofstream out_file(file_name.c_str(), std::ios::app);
+                       
         for (size_t i = 0; i < world.size(); ++i) {
             // for (const auto& j : world[i].males) {
             for (size_t j = 0; j < world[i].males.size(); ++j) {
@@ -756,9 +776,13 @@ struct Output {
 
 
     void output_extinction_metrics(const std::vector< Niche >& world, size_t t, const Param& P) {
-        std::ofstream out_file(file_name.c_str(), std::ios::app);
+        
+        static std::once_flag header_written;
+       
         //I tried to add column names here but not sure if it worked
-        if (t == 0) {
+        std::call_once(header_written, [&]() {
+            std::ofstream out_file(file_name.c_str());
+         
             out_file << "Time" << "\t";
             for (size_t NicheNr = 0; NicheNr < P.num_niches; NicheNr++) {
                 out_file
@@ -767,7 +791,10 @@ struct Output {
                     << "Niche_" << NicheNr << "_NrF" << "\t";
             }
             out_file << "\n";
-        }
+            out_file.close();
+        });
+        
+        std::ofstream out_file(file_name.c_str(); std::ios::app);
 
         out_file << t << "\t";
         for (size_t i = 0; i < world.size(); ++i) {
@@ -781,11 +808,18 @@ struct Output {
 
     void output_cInvest(const std::vector< Niche >& world, size_t t,
         const Param& P) {
-        std::ofstream out_file(file_name.c_str(), std::ios::app);
-        if (t == 0) {
+        static std::once_flag header_written;
+       
+        //I tried to add column names here but not sure if it worked
+        std::call_once(header_written, [&]() {
+            std::ofstream out_file(file_name.c_str());
+         
             out_file << "Time" << "\t" << "Niche" << "\t" << "Sex" << "\t" << "cInvest" << "\t" << "Dispersed" << "\t" << "Age" << "\t" << "LRS" << "\t";
             out_file << "\n";
-        }
+            out_file.close();
+        });
+        
+        std::ofstream out_file(file_name.c_str(), std::ios::app);
 
         if (t % P.save_interval == 0) {
             for (size_t i = 0; i < world.size(); ++i) {
