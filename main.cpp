@@ -16,6 +16,8 @@
 
 #include <chrono>
 
+#include <mutex> // for writing headers once.
+
 
 using reng_type = rndutils::default_engine;
 enum sex { male, female };
@@ -775,7 +777,9 @@ struct Output {
 
 
 
-    void output_extinction_metrics(const std::vector< Niche >& world, size_t t, const Param& P) {
+    void output_extinction_metrics(const std::vector< Niche >& world,
+                                   size_t t,
+                                   const Param& P) {
         
         static std::once_flag header_written;
        
@@ -794,7 +798,7 @@ struct Output {
             out_file.close();
         });
         
-        std::ofstream out_file(file_name.c_str(); std::ios::app);
+        std::ofstream out_file(file_name.c_str(), std::ios::app);
 
         out_file << t << "\t";
         for (size_t i = 0; i < world.size(); ++i) {
