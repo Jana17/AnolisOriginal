@@ -25,8 +25,8 @@ enum sex { male, female };
 enum output_type { only_average, only_females, indiv_data_end, only_dispersers, extinction_metrics, cInvest };
 
 struct Param {
-    size_t number_of_timesteps = 10000;
-    int save_interval = 1000; //e.g. save output only every 10 timesteps
+    size_t number_of_timesteps = 20001;
+    int save_interval = 1; //e.g. save output only every 10 timesteps
 
     size_t num_niches = 6;
     size_t num_traits = 6;
@@ -58,7 +58,7 @@ struct Param {
     int init_females = 100;
     double init_investment = 0.0;
 
-    int SexSel = 1; //Between how many males can the female choose? The higher this variable is, the stronger sexual selection
+    int SexSel = 4; //Between how many males can the female choose? The higher this variable is, the stronger sexual selection
 
     output_type chosen_output_type = cInvest;
     std::string only_average_file_name = "averages.txt";
@@ -248,11 +248,11 @@ struct Individual {
     double fit_to_niche;
     double carotenoid_investment;
     double dewlap;
-    bool dispersed = false;//I added this in order to be able to output e.g. specifically only dispersers
+    bool dispersed = false; // I added this in order to be able to output e.g. specifically only dispersers
 
     int prev_niche;
     int niche;
-    double prev_mismatch; //mismatch before dispersal, i.e. had they not dispersed
+    double prev_mismatch; // mismatch before dispersal, i.e. had they not dispersed
 
     int age;
     int LRS;
@@ -297,7 +297,7 @@ struct Individual {
             i.mutate(rnd);
             i.set_phenotype(S, P.sigma);
         }
-        carotenoid_investment = rnd.mutate_trait(carotenoid_investment); //is this correct?
+        carotenoid_investment = rnd.mutate_trait(carotenoid_investment); // is this correct? TJ: yes
 
         niche = parent1.niche;
         calculate_resources(trait_goals, P.MaxMism[niche], rnd);
@@ -307,10 +307,28 @@ struct Individual {
 
     double calculate_match_to_niche(const std::vector<double>& selection_goals) {
         double fit = 0.0;
-        for (size_t i = 0; i < selection_goals.size(); ++i) {
-            auto d = selection_goals[i] - traits[i].phenotype;
-            fit += std::abs(d);
+       
+        // legacy code!!!!!! only for initial testing.
+        if (niche == 3 || niche == 5) {
+            double size_mismatch = 0.0;
+            if (traits[0].phenotype < 10) {
+                size_mismatch = 10 - traits[0].phenotype;
+            }
+            if (traits[0].phenotype > 50) {
+                size_mismatch = traits[0].phenotype - 50;
+            }
+            fit = size_mismatch;
+            for (size_t i = 1; i < selection_goals.size(); ++i) {
+                auto d = selection_goals[i] - traits[i].phenotype;
+                fit += std::abs(d);
+            }
+        } else {
+            for (size_t i = 0; i < selection_goals.size(); ++i) {
+                auto d = selection_goals[i] - traits[i].phenotype;
+                fit += std::abs(d);
+            }
         }
+        
         return fit;
     }
 
@@ -328,8 +346,7 @@ struct Individual {
             resource_level = fit_to_niche;
         }
         if (S == male) {
-            resource_level = allocate_resources(fit_to_niche,
-                rnd);
+            resource_level = allocate_resources(fit_to_niche, rnd);
         }
     }
 
@@ -443,7 +460,7 @@ struct Niche {
 
         std::vector< store_info > candidates(sexsel);
 
-        if (sexsel > males.size()) { // border case where there are few males
+        if (sexsel >= males.size()) { // border case where there are few males
             for (size_t i = 0; i < males.size(); ++i) {
                 candidates[i].index = i;
                 candidates[i].dew_lap = males[i].dewlap;
@@ -1018,7 +1035,7 @@ struct Simulation {
 int main() {
 
     Param parameters;
-    parameters.set_parameters("ParameterFile.txt");
+ //   parameters.set_parameters("ParameterFile.txt");
 
     auto t1 = std::chrono::system_clock::now();
 
