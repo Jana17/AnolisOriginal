@@ -42,7 +42,6 @@ TEST_CASE ("random number methods") {
     
     size_t num_niches = 6;
     size_t num_repl = 100;
-    const size_t total_repl = num_niches * num_repl;
     
     std::array< int, 600 > found_niches;
     for (size_t current_niche = 0; current_niche < num_niches; ++current_niche) {
@@ -59,7 +58,7 @@ TEST_CASE ("random number methods") {
     CHECK(max_niche == num_niches - 1);
     CHECK(min_niche == 0);
     
-    std::array<int, 6> hist;
+    std::array<int, 6> hist = {0, 0, 0, 0, 0, 0};
     for(const auto& i : found_niches) {
         hist[i]++;
     }
