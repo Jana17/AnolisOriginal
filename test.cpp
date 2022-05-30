@@ -66,15 +66,33 @@ TEST_CASE ("random number methods") {
     for (size_t i = 0; i < 6; ++i) {
         CHECK(std::abs(hist[i] - 100) < 50); // this is very generous! Should never break.
     }
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
 }
 
+TEST_CASE ("migration") {
+    Param P;
+    std::vector<double> trait_goals = {0.5, 0.5, 0.5, 0.5, 0.5, 0.5};
+    double sigma = 1.0;
+    rnd_j rndgen(1);
+    
+    Individual Offspring(trait_goals, sigma, P, female, rndgen);
+    
+    for (double proportion_dispersal_density = 0.0; proportion_dispersal_density <= 1.0;
+         proportion_dispersal_density += 0.01) {
+    
+        double proportion_available = 0.5;
+        Offspring.fit_to_niche = 0.9;
+        double OldNicheFit = Offspring.fit_to_niche;
+        double basal_dispersal = 0.01;
+        
+        double mismatch_dispersal = std::exp(-5 * pow(OldNicheFit, 2));
+        //old function:
+         double density_dispersal = std::exp(0.5 * pow(proportion_available, 2)) - 1;
+         double prob_disperse = std::max(basal_dispersal,
+                                         ((1 - proportion_dispersal_density) * mismatch_dispersal
+                                        + proportion_dispersal_density * density_dispersal));
+        
+        double new_prob = Offspring.calc_migration_prob(proportion_available, proportion_dispersal_density, basal_dispersal);
+        
+        REQUIRE(std::abs(new_prob - prob_disperse) < 1e-5);
+    }
+}

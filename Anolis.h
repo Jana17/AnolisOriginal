@@ -261,8 +261,8 @@ struct Individual {
     int LRS;
 
     Individual(const std::vector< double >& trait_goals,
-        double sigma, Param P,
-        sex initial_sex, rnd_j& rnd) : S(initial_sex), niche(P.initial_niche) {
+              double sigma, Param P,
+               sex initial_sex, rnd_j& rnd) : S(initial_sex), niche(P.initial_niche) {
         for (size_t i = 0; i < trait_goals.size(); ++i) {
             traits.push_back(Trait(trait_goals[i],
                 trait_goals[i],
@@ -277,10 +277,10 @@ struct Individual {
     }
 
     Individual(const Individual& parent1,
-        const Individual& parent2,
-        const std::vector<double>& trait_goals,
-        Param P,
-        rnd_j& rnd) : S(rnd.get_random_sex()), niche(parent1.niche) {
+               const Individual& parent2,
+               const std::vector<double>& trait_goals,
+               Param P,
+               rnd_j& rnd) : S(rnd.get_random_sex()), niche(parent1.niche) {
 
         // recombination
         traits = parent1.traits;
@@ -341,8 +341,8 @@ struct Individual {
     }
 
     void calculate_resources(const std::vector<double>& selection_goals,
-        int max_mismatch,
-        rnd_j rnd) {
+                             int max_mismatch,
+                             rnd_j& rnd) {
         mismatch = calculate_match_to_niche(selection_goals);
         fit_to_niche = (max_mismatch - mismatch) / max_mismatch;
         if (S == female) {
@@ -353,11 +353,16 @@ struct Individual {
         }
     }
 
-    bool will_migrate(double p, double lambda, double min_rate, rnd_j& rnd) {
+    double calc_migration_prob(double p, double lambda, double min_rate) {
         double disp_fit = std::exp(-5 * fit_to_niche * fit_to_niche);
         double disp_dens = std::exp(0.5 * p * p) - 1;
-        double prob_disp = lambda * disp_fit + (1 - lambda) * disp_dens;
+        double prob_disp = (1 - lambda) * disp_fit + lambda * disp_dens;
         prob_disp = std::max(prob_disp, min_rate);
+        return prob_disp;
+    }
+    
+    bool will_migrate(double p, double lambda, double min_rate, rnd_j& rnd) {
+        auto prob_disp = calc_migration_prob(p, lambda, min_rate);
         return rnd.bernouilli(prob_disp);
     }
 
