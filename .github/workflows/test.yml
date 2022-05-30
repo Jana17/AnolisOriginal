@@ -1,0 +1,27 @@
+name: test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-and-upstream:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v1
+        with:
+          fetch-depth: 2
+      - name: Before Install
+        run: |
+          sudo apt-get install g++
+      - name: Run Tests
+        run: |
+          g++ -std=c++17 -o TestProgram -fprofile-arcs -ftest-coverage -fprofile-generate test.cpp
+          ./TestProgram
+          gcov -o . test.cpp
+      - name: Upload
+        uses: codecov/codecov-action@v1
+        with:
+          files: Anolis.h.gcov
