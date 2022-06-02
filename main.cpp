@@ -10,7 +10,7 @@
 int main() {
 
     Param parameters;
-    parameters.set_parameters("ParameterFile.txt");
+  //  parameters.set_parameters("ParameterFile.txt");
 
     std::cout << parameters.number_of_timesteps << "\n";
     
