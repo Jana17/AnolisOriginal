@@ -17,6 +17,8 @@
 #include <string>
 #include <array>
 
+#include <mutex>
+
 #include <chrono>
 
 #include "rndutils.hpp"
@@ -558,11 +560,11 @@ struct Niche {
 
         // if the number of males to pick from is larger than the
         // number of available males, limit choice to all available males.
-        if (sexsel > males.size()) sexsel = static_cast<int>(males.size());
+        if (sexsel > static_cast<int>(males.size())) sexsel = static_cast<int>(males.size());
 
         std::vector< store_info > candidates(sexsel);
 
-        if (sexsel >= males.size()) { // border case where there are few males
+        if (sexsel >= static_cast<int>(males.size())) { // border case where there are few males
             for (size_t i = 0; i < males.size(); ++i) {
                 candidates[i].index = i;
                 candidates[i].dew_lap = males[i].dewlap;
@@ -1174,9 +1176,9 @@ struct Simulation {
 
     std::vector< std::vector< double >> create_random_goals() {
         std::vector< std::vector< double >> new_goals;
-        for (int i = 0; i < parameters.num_niches; ++i) {
+        for (size_t i = 0; i < parameters.num_niches; ++i) {
             std::vector< double > niche_goals(parameters.num_traits);
-            for (int j = 0; j < parameters.num_traits; ++j) {
+            for (size_t j = 0; j < parameters.num_traits; ++j) {
                 niche_goals[j] = static_cast<double>(master_random_generator.random_number(100)); //why 100 shouldn't this be a parameter??
             }
             new_goals.push_back(niche_goals);
