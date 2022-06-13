@@ -15,39 +15,38 @@
 
 #include <vector>
 #include <string>
-#include "rndutils.hpp"
+#include <array>
 
 #include <chrono>
 
-#include <mutex> // for writing headers once.
+#include "rndutils.hpp"
 
-
-using reng_type = rndutils::default_engine;
 enum sex { male, female };
-
 enum output_type { only_average, only_females, indiv_data_end, only_dispersers, extinction_metrics, cInvest };
 
+using reng_type = rndutils::default_engine; // alternative is mersenne twister
+
 struct Param {
-    size_t number_of_timesteps = 20001;
-    int save_interval = 10; //e.g. save output only every 10 timesteps
+    size_t number_of_timesteps = 1001;
+    int save_interval = 100; //e.g. save output only every 10 timesteps
 
     size_t num_niches = 6;
     size_t num_traits = 6;
     int initial_niche = 5;//which niche do you start in?
 
     int pop_size_max = 1000;
-    double lambda = 0.5;
+    double lambda = 0.0; // propensity dispersal
 
     double basal_death_rate = 0.05; // deathrate
     double basal_birth_rate = 0.8; // birthrate
     double basal_migration_rate = 0.01; // basal_dispersal
 
-    double sigma = 0.0; // should be  0, 0.5 or 1.
+    double sigma = 0.0; // should be  0, 0.5 or 1. // PropSexDep
 
     double gamma = 3.0; // standard deviation of cauchy distribution of mutation.
                         // also known as muteffect_size
 
-    double d_sigma = 0.001;
+    double d_sigma = 0.0001;
 
     double mu = 0.01; //mutrate
     double recom_rate = 0.0;
@@ -60,7 +59,7 @@ struct Param {
 
     int init_males = 500;
     int init_females = 500;
-    double init_investment = 0.0;
+    double init_investment = 0.1;
 
     int SexSel = 1; //Between how many males can the female choose? The higher this variable is, the stronger sexual selection
 
@@ -113,6 +112,7 @@ struct Param {
     }
 };
 
+
 class rnd_j {
 public:
     reng_type rndgen;
@@ -150,12 +150,13 @@ public:
         return male;
     }
 
-    double mutate_trait(double old_trait_value) {
+    double mutate_trait(double old_trait_value, double max_trait) {
         auto new_trait_value = old_trait_value;
         if (bernouilli(mutate_prob)) {
-            new_trait_value += cauchy_dist(rndgen);
-            new_trait_value = std::max(new_trait_value, 0.0);
-            new_trait_value = std::min(new_trait_value, 1.0);
+            double trait_change =  cauchy_dist(rndgen);
+            if (max_trait == 1.0) trait_change = trait_change / 100.0;
+            
+            new_trait_value = std::clamp(old_trait_value + trait_change, 0.0, max_trait);
         }
         return new_trait_value;
     }
@@ -183,9 +184,7 @@ public:
         return unif_dist(rndgen);
     }
 
-
     //// setters:
-
     void set_mutate_trait_dist(double s) {
         cauchy_dist = std::cauchy_distribution<double>(0.0, s);
     }
@@ -208,11 +207,6 @@ private:
     double mutate_prob;
 };
 
-struct store_info {
-    size_t index;
-    double dew_lap;
-};
-
 
 struct Trait {
     double a;
@@ -220,6 +214,8 @@ struct Trait {
     double c;
     double phenotype;
 
+    Trait() {};
+    
     Trait(double A, double B, double C) : a(A), b(B), c(C) {
     }
 
@@ -233,13 +229,16 @@ struct Trait {
     }
 
     void mutate(rnd_j& rnd) {
-        a = rnd.mutate_trait(a);
-        b = rnd.mutate_trait(b);
-        c = rnd.mutate_trait(c);
+        a = rnd.mutate_trait(a, 100.0);
+        b = rnd.mutate_trait(b, 100.0);
+        c = rnd.mutate_trait(c, 100.0);
     }
 };
 
-
+struct store_info { // used for sexual selection
+    size_t index;
+    double dew_lap;
+};
 
 struct Individual {
     std::vector< Trait > traits;
@@ -259,13 +258,25 @@ struct Individual {
     int LRS;
 
     Individual(const std::vector< double >& trait_goals,
-              double sigma, Param P,
-               sex initial_sex, rnd_j& rnd) : S(initial_sex), niche(P.initial_niche) {
-        for (size_t i = 0; i < trait_goals.size(); ++i) {
-            traits.push_back(Trait(trait_goals[i],
-                                   trait_goals[i],
-                                   trait_goals[i]));
-            traits.back().mutate(rnd); // add some initial variation
+               double sigma,
+               const Param& P,
+               sex initial_sex,
+               rnd_j& rnd) : S(initial_sex), niche(P.initial_niche) {
+        
+        std::uniform_real_distribution<double> initializeWithNoise(-10, 10);
+        
+        traits.resize(trait_goals.size());
+        
+        for (size_t i = 0; i < traits.size(); ++i) {
+            
+            std::vector<double> new_traits {trait_goals[i], trait_goals[i], trait_goals[i]};
+            for (size_t j = 0; j < new_traits.size(); ++j) {
+                new_traits[j] += initializeWithNoise(rnd.rndgen);
+                new_traits[j] = std::clamp(new_traits[j], 0.0, 100.0);
+            }
+            
+            traits[i] = Trait(new_traits[0], new_traits[1], new_traits[2]);
+            
             traits[i].set_phenotype(S, sigma);
         }
         niche = P.initial_niche;
@@ -299,134 +310,120 @@ struct Individual {
             i.mutate(rnd);
             i.set_phenotype(S, P.sigma);
         }
-        carotenoid_investment = rnd.mutate_trait(carotenoid_investment); // is this correct? TJ: yes
+        
+        carotenoid_investment = rnd.mutate_trait(carotenoid_investment, 1.0); // is this correct? TJ: yes
 
         niche = parent1.niche;
+        
         calculate_resources(trait_goals, P.MaxMism[niche], rnd);
         age = 0;
         LRS = 0;
     }
 
     double calculate_match_to_niche(const std::vector<double>& selection_goals) {
-        double current_mismatch = 0.0;
-       
-        // legacy code!!!!!! only for initial testing.
-        
-        switch( niche ) {
-            case 0: {
-                current_mismatch = std::abs(traits[0].phenotype - selection_goals[0]) +
-                                   0 +
-                                   std::abs(traits[2].phenotype - selection_goals[2]) +
-                                   std::abs(traits[3].phenotype - selection_goals[3]) +
-                                   std::abs(traits[4].phenotype - selection_goals[4]) +
-                                   std::abs(traits[5].phenotype - selection_goals[5]);
-                break;
+            double current_mismatch = 0.0;
+           
+            // legacy code!!!!!! only for initial testing.
+            switch( niche ) {
+                case 0: {
+                    current_mismatch = std::abs(traits[0].phenotype - selection_goals[0]) +
+                                       0 +
+                                       std::abs(traits[2].phenotype - selection_goals[2]) +
+                                       std::abs(traits[3].phenotype - selection_goals[3]) +
+                                       std::abs(traits[4].phenotype - selection_goals[4]) +
+                                       std::abs(traits[5].phenotype - selection_goals[5]);
+                    break;
+                }
+                case 1: {
+                    current_mismatch = std::abs(traits[0].phenotype - selection_goals[0]) +
+                                       0 +
+                                       std::abs(traits[2].phenotype - selection_goals[2]) +
+                                       std::abs(traits[3].phenotype - selection_goals[3]) +
+                                       std::abs(traits[4].phenotype - selection_goals[4]) +
+                                       std::abs(traits[5].phenotype - selection_goals[5]);
+                    break;
+                }
+                case 2: {
+                    current_mismatch = std::abs(traits[0].phenotype - selection_goals[0]) +
+                                       std::abs(traits[1].phenotype - selection_goals[1])+
+                                       std::abs(traits[2].phenotype - selection_goals[2]) +
+                                       std::abs(traits[3].phenotype - selection_goals[3]) +
+                                       std::abs(traits[4].phenotype - selection_goals[4]) +
+                                       std::abs(traits[5].phenotype - selection_goals[5]);
+                    break;
+                }
+                case 3: {
+                    double size_mismatch;
+                    if (traits[0].phenotype < 10) { size_mismatch = 10 - traits[0].phenotype; }
+                    if (traits[0].phenotype > 50) { size_mismatch = traits[0].phenotype - 50; }
+                    else { size_mismatch = 0; }
+                    
+                    current_mismatch =  size_mismatch +
+                                        std::abs(traits[1].phenotype - selection_goals[1])+
+                                        std::abs(traits[2].phenotype - selection_goals[2]) +
+                                        std::abs(traits[3].phenotype - selection_goals[3]) +
+                                        std::abs(traits[4].phenotype - selection_goals[4]) +
+                                        std::abs(traits[5].phenotype - selection_goals[5]);
+                    break;
+                }
+                case 4: {
+                    current_mismatch = std::abs(traits[0].phenotype - selection_goals[0]) +
+                                       std::abs(traits[1].phenotype - selection_goals[1])+
+                                       std::abs(traits[2].phenotype - selection_goals[2]) +
+                                       std::abs(traits[3].phenotype - selection_goals[3]) +
+                                       std::abs(traits[4].phenotype - selection_goals[4]) +
+                                       std::abs(traits[5].phenotype - selection_goals[5]);
+                    break;
+                }
+                case 5: {
+                    double size_mismatch;
+                    if (traits[0].phenotype < 10) { size_mismatch = 10 - traits[0].phenotype; }
+                    if (traits[0].phenotype > 50) { size_mismatch = traits[0].phenotype - 50; }
+                    else { size_mismatch = 0; }
+                    
+                    current_mismatch =  size_mismatch +
+                                        std::abs(traits[1].phenotype - selection_goals[1])+
+                                        std::abs(traits[2].phenotype - selection_goals[2]) +
+                                        std::abs(traits[3].phenotype - selection_goals[3]) +
+                                        std::abs(traits[4].phenotype - selection_goals[4]) +
+                                        std::abs(traits[5].phenotype - selection_goals[5]);
+                    break;
+                }
+                default: {
+                    throw std::runtime_error("Error! Individual in non-existing niche!");
+                }
             }
-            case 1: {
-                current_mismatch = std::abs(traits[0].phenotype - selection_goals[0]) +
-                                   0 +
-                                   std::abs(traits[2].phenotype - selection_goals[2]) +
-                                   std::abs(traits[3].phenotype - selection_goals[3]) +
-                                   std::abs(traits[4].phenotype - selection_goals[4]) +
-                                   std::abs(traits[5].phenotype - selection_goals[5]);
-                break;
-            }
-            case 2: {
-                current_mismatch = std::abs(traits[0].phenotype - selection_goals[0]) +
-                                   std::abs(traits[1].phenotype - selection_goals[1])+
-                                   std::abs(traits[2].phenotype - selection_goals[2]) +
-                                   std::abs(traits[3].phenotype - selection_goals[3]) +
-                                   std::abs(traits[4].phenotype - selection_goals[4]) +
-                                   std::abs(traits[5].phenotype - selection_goals[5]);
-            }
-            case 3: {
-                double size_mismatch;
-                if (traits[0].phenotype < 10) { size_mismatch = 10 - traits[0].phenotype; }
-                if (traits[0].phenotype > 50) { size_mismatch = traits[0].phenotype - 50; }
-                else { size_mismatch = 0; }
-                
-                current_mismatch =  size_mismatch +
-                                    std::abs(traits[1].phenotype - selection_goals[1])+
-                                    std::abs(traits[2].phenotype - selection_goals[2]) +
-                                    std::abs(traits[3].phenotype - selection_goals[3]) +
-                                    std::abs(traits[4].phenotype - selection_goals[4]) +
-                                    std::abs(traits[5].phenotype - selection_goals[5]);
-                break;
-            }
-            case 4: {
-                current_mismatch = std::abs(traits[0].phenotype - selection_goals[0]) +
-                                   std::abs(traits[1].phenotype - selection_goals[1])+
-                                   std::abs(traits[2].phenotype - selection_goals[2]) +
-                                   std::abs(traits[3].phenotype - selection_goals[3]) +
-                                   std::abs(traits[4].phenotype - selection_goals[4]) +
-                                   std::abs(traits[5].phenotype - selection_goals[5]);
-            }
-            case 5: {
-                double size_mismatch;
-                if (traits[0].phenotype < 10) { size_mismatch = 10 - traits[0].phenotype; }
-                if (traits[0].phenotype > 50) { size_mismatch = traits[0].phenotype - 50; }
-                else { size_mismatch = 0; }
-                
-                current_mismatch =  size_mismatch +
-                                    std::abs(traits[1].phenotype - selection_goals[1])+
-                                    std::abs(traits[2].phenotype - selection_goals[2]) +
-                                    std::abs(traits[3].phenotype - selection_goals[3]) +
-                                    std::abs(traits[4].phenotype - selection_goals[4]) +
-                                    std::abs(traits[5].phenotype - selection_goals[5]);
-                break;
-            }
-            default: {
-                throw std::runtime_error("Error! Individual in non-existing niche!");
-            }
+            
+            return current_mismatch;
         }
-    /*    if (niche == 3 || niche == 5) {
-            double size_mismatch = 0.0;
-            if (traits[0].phenotype < 0.1) {
-                size_mismatch = 0.1 - traits[0].phenotype;
-            }
-            if (traits[0].phenotype > 0.5) {
-                size_mismatch = traits[0].phenotype - 0.5;
-            }
-            fit = size_mismatch;
-            for (size_t i = 1; i < selection_goals.size(); ++i) {
-                auto d = selection_goals[i] - traits[i].phenotype;
-                fit += std::abs(d);
-            }
-        } else {
-            for (size_t i = 0; i < selection_goals.size(); ++i) {
-                auto d = selection_goals[i] - traits[i].phenotype;
-                fit += std::abs(d);
-            }
-        }
-     
-     */
-        
-        return mismatch;
+
+    double allocate_resources(double niche_fit, rnd_j& rnd) {
+        dewlap = carotenoid_investment * niche_fit + rnd.dewlap_noise();
+        return niche_fit * (1 - carotenoid_investment);
     }
 
     void calculate_resources(const std::vector<double>& selection_goals,
-                             int max_mismatch,
-                             rnd_j& rnd) {
-        mismatch = calculate_match_to_niche(selection_goals);
-        fit_to_niche = (max_mismatch - mismatch) / max_mismatch;
-        if (S == female) {
-            resource_level = fit_to_niche;
-            dewlap = 0.0; // not really used, but just to be sure.
+                                 int max_mismatch,
+                                 rnd_j& rnd) {
+            mismatch = calculate_match_to_niche(selection_goals);
+            fit_to_niche = (max_mismatch - mismatch) / max_mismatch;
+            if (S == female) {
+                resource_level = fit_to_niche;
+                dewlap = 0.0; // not really used, but just to be sure.
+            }
+            if (S == male) {
+                dewlap = carotenoid_investment * fit_to_niche + rnd.dewlap_noise();
+                resource_level = resource_level - carotenoid_investment * resource_level;
+            }
+            resource_level = std::clamp(resource_level, 0.0, 1.0);
         }
-        if (S == male) {
-            dewlap = carotenoid_investment * fit_to_niche + rnd.dewlap_noise();
-            resource_level = resource_level - carotenoid_investment * resource_level;
-        }
-        resource_level = std::max(resource_level, 0.0);
-        resource_level = std::min(resource_level, 1.0);
-    }
 
     double calc_migration_prob(double p, double lambda, double min_rate) {
-        double disp_fit = std::exp(-5 * fit_to_niche * fit_to_niche);
-        double disp_dens = std::exp(0.5 * p * p) - 1;
-        double prob_disp = (1 - lambda) * disp_fit + lambda * disp_dens;
-        prob_disp = std::max(prob_disp, min_rate);
-        return prob_disp;
+            double disp_fit = std::exp(-5 * fit_to_niche * fit_to_niche);
+            double disp_dens = std::exp(0.5 * p * p) - 1;
+            double prob_disp = (1 - lambda) * disp_fit + lambda * disp_dens;
+            prob_disp = std::max(prob_disp, min_rate);
+            return prob_disp;
     }
     
     bool will_migrate(double p, double lambda, double min_rate, rnd_j& rnd) {
@@ -497,7 +494,7 @@ struct Niche {
 
         for (size_t i = 0; i < v.size(); ) {
             double indiv_deathrate = 0.75 * death_rate +
-                0.25 * std::exp(-2 * pow(v[i].fit_to_niche, 8));
+                0.25 * std::exp(-2 * pow(v[i].fit_to_niche, 8)); // THIS IS WRONG FOR MALES
             if (rnd.bernouilli(indiv_deathrate)) {
                 v[i] = v.back();
                 v.pop_back();
@@ -510,9 +507,38 @@ struct Niche {
     }
 
 
-    void viability_selection(rnd_j& rnd) {
-        survival(males, rnd);
-        survival(females, rnd);
+    void viability_selection(rnd_j& rnd,
+                             int& num_dead_females,
+                             int& num_dead_males) {
+        num_dead_males = 0;
+        num_dead_females = 0;
+        
+        std::vector<Individual> tmp_pop;
+        for (const auto& ind : females) {
+            double indiv_deathrate = 0.75 * death_rate +
+                                     0.25 * std::exp(-2 * std::pow(ind.fit_to_niche, 8));
+
+            std::bernoulli_distribution DeathEvent(indiv_deathrate);
+            if (!DeathEvent(rnd.rndgen)) {
+                tmp_pop.emplace_back(ind);
+            } else {
+                num_dead_females++;
+            }
+        }
+        std::swap(females, tmp_pop);
+
+        tmp_pop.clear();
+        for (const auto& ind : males) {
+            double indiv_deathrate = 0.75 * death_rate +
+            0.25 * std::exp(-2 * pow(ind.resource_level, 8));
+            std::bernoulli_distribution DeathEvent(indiv_deathrate);
+            if (!DeathEvent(rnd.rndgen)) {
+                tmp_pop.emplace_back(ind);
+            } else {
+                num_dead_males++;
+            }
+        }
+        std::swap(males, tmp_pop);
     }
 
 
@@ -580,7 +606,13 @@ struct Niche {
         return picked_indiv;
     }
 
-    void reproduction(rnd_j& rnd, const Param& P) {
+    void reproduction(rnd_j& rnd, const Param& P,
+                      int& num_kids,
+                      int& num_migrants_sent) {
+        
+        num_kids = 0;
+        num_migrants_sent = 0;
+        
         std::vector< Individual > kids;
 
         if (males.empty()) return; // no reproduction
@@ -589,13 +621,14 @@ struct Niche {
 
         double p = 1.0 * (P.pop_size_max - current_pop_size) / P.pop_size_max;
         if (p < 0.0) p = 0.0;
+        
         for (auto& mother : females) {
             double prob_repro = p * (0.8 * P.basal_birth_rate + 0.2 * mother.resource_level);
             if (rnd.bernouilli(prob_repro)) {
 
                 auto father_index = get_father_index(males, P.SexSel, rnd);
 
-                auto offspring = Individual(mother, males[father_index], selection_goals, P, rnd);
+                auto offspring = Individual(mother, males[father_index],                               selection_goals, P, rnd);
 
                 mother.LRS = mother.LRS + 1;
                 males[father_index].LRS = males[father_index].LRS + 1;
@@ -605,9 +638,10 @@ struct Niche {
                     offspring.prev_niche = mother.niche;
                     offspring.prev_mismatch = offspring.mismatch;
                     migrants.push_back(std::move(offspring));
-                }
-                else {
+                    num_migrants_sent++;
+                } else {
                     kids.push_back(std::move(offspring));
+                    num_kids++;
                 }
             }
         }
@@ -633,7 +667,6 @@ struct Niche {
 };
 
 
-
 struct Output {
     Output(const Param& P) {
         o = P.chosen_output_type;
@@ -644,8 +677,12 @@ struct Output {
 
     }
 
+    std::vector< std::array< std::string, 4 > > track_record;
+    
     std::string file_name;
     output_type o;
+    
+    
 
     void update(const std::vector< Niche >& world, size_t t, const Param& P) {
         if (t % P.save_interval != 0) return;
@@ -986,8 +1023,73 @@ struct Output {
         }
         return sd;
     }
+    
+    void update_dead_indivs(size_t t, int niche_no, int num_dead_females, int num_dead_males) {
+        
+        std::array< std::string, 4> add1 = {std::to_string(t), std::to_string(niche_no), "dead_females", std::to_string(num_dead_females)};
+        std::array< std::string, 4> add2 = {std::to_string(t), std::to_string(niche_no), "dead_males", std::to_string(num_dead_males)};
+        track_record.push_back(add1);
+        track_record.push_back(add2);
+    }
+    
+    void update_offspring(size_t t, int niche_no, int num_local_kids, int num_migrants_sent) {
+        std::array< std::string, 4> add1 = {std::to_string(t), std::to_string(niche_no), "num_offspring", std::to_string(num_local_kids)};
+        std::array< std::string, 4> add2 = {std::to_string(t), std::to_string(niche_no), "num_migrants_sent", std::to_string(num_migrants_sent)};
+        track_record.push_back(add1);
+        track_record.push_back(add2);
+    }
+    
+    void write_track_record(std::string file_name) {
+        std::ofstream out_file(file_name.c_str());
+        out_file << "t" << "\t" << "niche" << "\t" << "statistic" << "\t" << "value" << "\n";
+        
+        for (const auto& i : track_record) {
+            for (const auto& j : i ) {
+                out_file << j << "\t";
+            }
+            out_file << "\n";
+        }
+        out_file.close();
+    }
+    
+    std::vector< std::array< std::string, 4>> record_fit;
+    
+    void update_niche_fit(size_t t, const std::vector<Niche>& world) {
+        for (size_t niche = 0; niche < world.size(); ++niche) {
+            for (const auto& i : world[niche].females) {
+                std::array<std::string, 4 > to_add = {std::to_string(t),
+                                                      std::to_string(niche),
+                                                      "female",
+                                                     std::to_string(i.fit_to_niche)};
+                record_fit.push_back(to_add);
+            }
+            
+            for (const auto& i : world[niche].males) {
+                std::array<std::string, 4 > to_add = {std::to_string(t),
+                                                      std::to_string(niche),
+                                                      "male",
+                                                     std::to_string(i.fit_to_niche)};
+                record_fit.push_back(to_add);
+            }
+        }
+        return;
+    }
+    
+    void write_niche_fit(const std::string file_name) {
+        std::ofstream out_file(file_name.c_str());
+        out_file << "t" << "\t" << "niche" << "\t" << "sex" << "\t" << "fit_to_niche" << "\n";
+        
+        for (const auto& i : record_fit) {
+            for (const auto& j : i ) {
+                out_file << j << "\t";
+            }
+            out_file << "\n";
+        }
+        out_file.close();
+    }
 
 };
+
 
 struct Simulation {
     Simulation(const Param& p, int seed) : parameters(p) {
@@ -1019,10 +1121,20 @@ struct Simulation {
 
     void run() {
         auto clock_start = std::chrono::system_clock::now();
+        
+        int num_dead_females, num_dead_males, num_local_kids, num_migrants_sent;
+        
+        
         for (size_t t = 0; t < parameters.number_of_timesteps; ++t) {
+            
+            record.update_niche_fit(t, world);
+            
             for (size_t i = 0; i < world.size(); ++i) {
-                world[i].viability_selection(master_random_generator);
-                world[i].reproduction(master_random_generator, parameters);
+                world[i].viability_selection(master_random_generator, num_dead_females, num_dead_males);
+          //      record.update_dead_indivs(t, i, num_dead_females, num_dead_males);
+                
+                world[i].reproduction(master_random_generator, parameters, num_local_kids, num_migrants_sent);
+         //       record.update_offspring(t, i, num_local_kids, num_migrants_sent);
             }
             distribute_migrants();
             record.update(world, t, parameters);
@@ -1040,6 +1152,8 @@ struct Simulation {
                 clock_start = clock_now;
             }
         }
+      //  record.write_track_record("track_record.txt");
+      //  record.write_niche_fit("niche_fit.txt");
     }
 
     void distribute_migrants() {
