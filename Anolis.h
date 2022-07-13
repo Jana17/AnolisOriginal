@@ -322,9 +322,21 @@ struct Individual {
         LRS = 0;
     }
 
+    
     double calculate_match_to_niche(const std::vector<double>& selection_goals) {
             double current_mismatch = 0.0;
            
+            // TODO /// TODO /// TODO // TODO /// TODO!!!
+            // THIS NEEDS A MORE GENERAL IMPLEMENTATION
+            bool this_code_is_finished = false;
+        
+        if (this_code_is_finished == true) {
+            // we no longer need niche dependence, as (I think) fit is identical everywhere - it just depends on the local selection goals.
+            for (size_t i = 0; i < selection_goals.size(); ++i) {
+                current_mismatch += std::abs(traits[i].phenotype - selection_goals[i]);
+                // or perhaps the square of the difference?
+            }
+        } else {
             // legacy code!!!!!! only for initial testing.
             switch( niche ) {
                 case 0: {
@@ -395,6 +407,7 @@ struct Individual {
                     throw std::runtime_error("Error! Individual in non-existing niche!");
                 }
             }
+        }
             
             return current_mismatch;
         }
@@ -421,6 +434,11 @@ struct Individual {
         }
 
     double calc_migration_prob(double p, double lambda, double min_rate) {
+            /// TODO /// TODO /// TODO
+            /// substitute prob_dispersal function with logistic function that has similar shape
+        
+        
+        
             double disp_fit = std::exp(-5 * fit_to_niche * fit_to_niche);
             double disp_dens = std::exp(0.5 * p * p) - 1;
             double prob_disp = (1 - lambda) * disp_fit + lambda * disp_dens;
@@ -517,6 +535,10 @@ struct Niche {
         
         std::vector<Individual> tmp_pop;
         for (const auto& ind : females) {
+            /// TODO /// TODO /// TODO
+            /// substitute indiv_deathrate function with logistic function that has similar shape
+            
+            
             double indiv_deathrate = 0.75 * death_rate +
                                      0.25 * std::exp(-2 * std::pow(ind.fit_to_niche, 8));
 
@@ -531,6 +553,9 @@ struct Niche {
 
         tmp_pop.clear();
         for (const auto& ind : males) {
+            /// TODO /// TODO /// TODO
+            /// substitute indiv_deathrate function with logistic function that has similar shape
+            
             double indiv_deathrate = 0.75 * death_rate +
             0.25 * std::exp(-2 * pow(ind.resource_level, 8));
             std::bernoulli_distribution DeathEvent(indiv_deathrate);
@@ -625,6 +650,10 @@ struct Niche {
         if (p < 0.0) p = 0.0;
         
         for (auto& mother : females) {
+            /// TODO /// TODO /// TODO
+            /// substitute prob_repro function with logistic function that has similar shape
+            
+            
             double prob_repro = p * (0.8 * P.basal_birth_rate + 0.2 * mother.resource_level);
             if (rnd.bernouilli(prob_repro)) {
 
