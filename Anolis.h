@@ -153,6 +153,9 @@ public:
     }
 
     double mutate_trait(double old_trait_value, double max_trait) {
+        // TODO // TODO // TODO
+        // Here, traits are assumed to be bounded between [0, 100.0], or [0, 1] for one specific trait.
+        // To make the model more general, this may need to be revised - for instance take a trait centered around 0, but limited in [-Inf, +Inf]
         auto new_trait_value = old_trait_value;
         if (bernouilli(mutate_prob)) {
             double trait_change =  cauchy_dist(rndgen);
