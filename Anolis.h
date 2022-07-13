@@ -65,7 +65,7 @@ struct Param {
 
     int SexSel = 1; //Between how many males can the female choose? The higher this variable is, the stronger sexual selection
 
-    output_type chosen_output_type = cInvest;
+    output_type chosen_output_type = only_average;
     std::string only_average_file_name = "averages.txt";
     std::string extinction_metrics_file_name = "extinction_metrics";
     std::string cInvest_file_name = "cInvest";
@@ -430,6 +430,7 @@ struct Individual {
                 dewlap = 0.0; // not really used, but just to be sure.
             }
             if (S == male) {
+                resource_level = fit_to_niche;
                 dewlap = carotenoid_investment * fit_to_niche + rnd.dewlap_noise();
                 resource_level = resource_level - carotenoid_investment * resource_level;
             }
@@ -703,8 +704,8 @@ struct Niche {
 
 struct Output {
     Output(const Param& P) {
-        o = P.chosen_output_type;
-        file_name = get_file_name(P, o);
+        chosen_output_type = P.chosen_output_type;
+        file_name = get_file_name(P, chosen_output_type);
     }
 
     Output() {
@@ -714,31 +715,32 @@ struct Output {
     std::vector< std::array< std::string, 4 > > track_record;
     
     std::string file_name;
-    output_type o;
+    output_type chosen_output_type;
     
     
 
     void update(const std::vector< Niche >& world, size_t t, const Param& P) {
         if (t % P.save_interval != 0) return;
 
-        switch (o) {
-        case only_average:
-            output_averages(world, t, P);
-            break;
-        case only_females:
-            // output_females(world, t);
-            break;
-        case indiv_data_end:
-            output_indivData_end(world, t, P);
-        case only_dispersers:
-            output_dispersers(world, t, P);
-            break;
-        case extinction_metrics:
-            output_extinction_metrics(world, t, P);
-            break;
-        case cInvest:
-            output_cInvest(world, t, P);
-            break;
+        switch (chosen_output_type) {
+            case only_average:
+                output_averages(world, t, P);
+                break;
+            case only_females:
+                // output_females(world, t);
+                break;
+            case indiv_data_end:
+                output_indivData_end(world, t, P);
+                break;
+            case only_dispersers:
+                output_dispersers(world, t, P);
+                break;
+            case extinction_metrics:
+                output_extinction_metrics(world, t, P);
+                break;
+            case cInvest:
+                output_cInvest(world, t, P);
+                break;
         }
     }
 
@@ -779,6 +781,8 @@ struct Output {
 
     void output_averages(const std::vector< Niche >& world, size_t t,
         const Param& P) {
+        
+        
         static std::once_flag header_written;
        
         //I tried to add column names here but not sure if it worked
@@ -1160,19 +1164,17 @@ struct Simulation {
         
         
         for (size_t t = 0; t < parameters.number_of_timesteps; ++t) {
-            
             record.update_niche_fit(t, world);
             
             for (size_t i = 0; i < world.size(); ++i) {
                 world[i].viability_selection(master_random_generator, num_dead_females, num_dead_males);
           //      record.update_dead_indivs(t, i, num_dead_females, num_dead_males);
-                
                 world[i].reproduction(master_random_generator, parameters, num_local_kids, num_migrants_sent);
          //       record.update_offspring(t, i, num_local_kids, num_migrants_sent);
             }
             distribute_migrants();
+            
             record.update(world, t, parameters);
-
 
             if (t % parameters.save_interval == 0) {
                 std::cout << "Time: " << t << " ";
@@ -1222,6 +1224,7 @@ struct Simulation {
 
         std::ifstream ifs(parameters.niche_file_name);
         if (!ifs.is_open()) { std::cerr << "Unable to open selection goals file " << parameters.niche_file_name << '\n'; exit(EXIT_FAILURE); }
+        std::cout << "able to open selection goals file\n";
         std::vector< std::vector< double >> new_goals;
         for (size_t niche_nr = 0; niche_nr < parameters.num_niches; niche_nr++) {
             std::vector<double> new_niche;
